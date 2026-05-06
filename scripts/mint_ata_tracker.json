@@ -1,0 +1,304 @@
+{
+  "entries": [
+    {
+      "timestamp": "2026-04-09T08:26:18.065Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "BdTvzixaq1EFmDRjefVvcPZBxBkdAMQc2CuTpL6N57mj",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "6nVUb3bbwpTUTX36epEKpTjuKCEqPu21LvP1mdvEnWsv",
+      "amountTokens": "1000",
+      "amountBaseUnits": "1000000000000",
+      "txSignature": "4gbFSG8cPiertXp3kcbBs2D956fULChRGfPN42djrAiMG1VaFwDurfQdiaHGePfQi9taBViGiZy7DCF4saNPh1Y4"
+    },
+    {
+      "timestamp": "2026-04-09T08:27:43.801Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "7Ru62uNfTEqx748XweWjLgjeJrT7KWjCsiocnK7Qqx9",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "DQmS8Yzz7GCTWARnY3BDL8ZVByrJEfpdaBhowTEUbdmb",
+      "amountTokens": "1000",
+      "amountBaseUnits": "1000000000000",
+      "txSignature": "4DEU8QZvdPqNCtYen37yAGdFP8oypJwp6fnVQameQPxXumuctdYzvLabmr6Vk6xkhNaaf5CZJupUJy6gFpz2PKWH"
+    },
+    {
+      "timestamp": "2026-04-13T09:16:16.683Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "BdTvzixaq1EFmDRjefVvcPZBxBkdAMQc2CuTpL6N57mj",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "6nVUb3bbwpTUTX36epEKpTjuKCEqPu21LvP1mdvEnWsv",
+      "amountTokens": "1000",
+      "amountBaseUnits": "1000000000000",
+      "txSignature": "2kr2hFPQrJrutZG84kocGDvRrNgQpPQGMHDv4QqtcNLWGBbKNop2Ja1kEqYNxTP4emTesxGSbLcqjVV4uRGS58Ve"
+    },
+    {
+      "timestamp": "2026-04-13T09:17:00.011Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "7Ru62uNfTEqx748XweWjLgjeJrT7KWjCsiocnK7Qqx9",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "DQmS8Yzz7GCTWARnY3BDL8ZVByrJEfpdaBhowTEUbdmb",
+      "amountTokens": "1000",
+      "amountBaseUnits": "1000000000000",
+      "txSignature": "5KhChYjQj91UGjk5Jm3o6B6oi9FpwuueYixoTVzBGYvVCHQk8E4Fp8TpabNHhXnDm7JbmCJvPMaqTrmMEg9Lv6oi"
+    },
+    {
+      "timestamp": "2026-04-13T12:47:30.553Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "DEzz2hBGDDPRC58WRpswFjYVH2M5BbhR9q6xVeTK2qKv",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "4brEemmogLE4MhmiMbictUr7p1G14BP653VQ6QgeGrNS",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "4qCTGrjxdp8hi7uTzrWxMLS752rKu1njhBe8RkNYchsaUGLSLp3kBDtXSzvPE7kb28iRXYpx6pHfRohTyAMUfr8r"
+    },
+    {
+      "timestamp": "2026-04-17T05:13:58.650Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "FRYJVUuNHeH1jJ4D56TTgRZyFQ7jEQQdu1vpd4evdkPb",
+      "recipient": "F8j5MGtzkWcu4BsNtFHjokcYDyyik31nQ9M8GSbdiXgy",
+      "ata": "2LpcWAvm549m7W4tVEz7TWKKaHCeftBh5ErUgEn6Uvzi",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "5yx6sdnZ2YM96LS5YKfxfe7YQyW5qFJQi3oQsjWtYoStap1e6Ghr5hsGJrxTdMfN1ci4AJhByxRwzJp63DPRb3KV"
+    },
+    {
+      "timestamp": "2026-04-17T05:15:13.619Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "DEzz2hBGDDPRC58WRpswFjYVH2M5BbhR9q6xVeTK2qKv",
+      "recipient": "F8j5MGtzkWcu4BsNtFHjokcYDyyik31nQ9M8GSbdiXgy",
+      "ata": "CpD4e7K5nPQtCP39YSPhnR2VuiPLfkRxKmNsMec21baD",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "ao4HGs9FH4XH6T7amZdZSrtSjXtVmzwQ839q99txYn9RngU4ijSTPZu9LsgSsrkrN3av9bZgDtrUdqNDD9myf1p"
+    },
+    {
+      "timestamp": "2026-04-20T06:00:55.884Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "DEzz2hBGDDPRC58WRpswFjYVH2M5BbhR9q6xVeTK2qKv",
+      "recipient": "88kyVcobhy3sBpUE31iuZC8rSvpiZNyK8x2qrRX8wMEL",
+      "ata": "4jhoQi47b265qdGivuy4yuphm8i14NvMRbStwhsRvr8V",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "37D5Z4KZsyR3XSHjpcegU3V8KGx7EdB1ByUFvgTkMLGNEJFK9ZmRXdziM78sGKRQ5QsxDKDMirSRUCdjYzSSRZSv"
+    },
+    {
+      "timestamp": "2026-04-20T06:02:52.241Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "7Ru62uNfTEqx748XweWjLgjeJrT7KWjCsiocnK7Qqx9",
+      "recipient": "88kyVcobhy3sBpUE31iuZC8rSvpiZNyK8x2qrRX8wMEL",
+      "ata": "A6E8KxSQBbEWndNtB11MMPUk9vWNXzkXNzq9XdFZKuSH",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "498PiWRGHSKWZY7auEkBhqTYfr5gPhKHgBBM23XKQ93R52711KFNN13KESnLveVir2Xte4kDP5kHLb2i8UBrcp2r"
+    },
+    {
+      "timestamp": "2026-04-20T07:53:48.336Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "FRYJVUuNHeH1jJ4D56TTgRZyFQ7jEQQdu1vpd4evdkPb",
+      "recipient": "F8j5MGtzkWcu4BsNtFHjokcYDyyik31nQ9M8GSbdiXgy",
+      "ata": "2LpcWAvm549m7W4tVEz7TWKKaHCeftBh5ErUgEn6Uvzi",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "3nrdt6u5cYnggtbT2yAod3Hwa2b91WQ7UU3uuaXfJgNcSbU25vXUt84qQfSP5RtG4ymusjbwGTCsF5NDMHTdFTWX"
+    },
+    {
+      "timestamp": "2026-04-20T12:29:37.124Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "7Ru62uNfTEqx748XweWjLgjeJrT7KWjCsiocnK7Qqx9",
+      "recipient": "F8j5MGtzkWcu4BsNtFHjokcYDyyik31nQ9M8GSbdiXgy",
+      "ata": "DdzZRTGGFX4Qk6k9sUikGeK18Bx27vSJjcAuGX1zes9f",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "2juSLJSxmFbTNFUya7itHrW1z6xZsNfiNX1yGDZeDEh2CvJb1ZyoJ71U1QK9rs93DS7nr6UCGqtgMSAUXe2Gkyac"
+    },
+    {
+      "timestamp": "2026-04-21T06:37:00.611Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "FRYJVUuNHeH1jJ4D56TTgRZyFQ7jEQQdu1vpd4evdkPb",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "CEgpg6K2qQrQaaQjhfMXvGvbkCo5cvUk1MYge1nn9RqR",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "4HFJH9T3tGFFfy9zbHuu7Y8B2gciz6c9hxxZTihB5GwbM8AQBDtP6TMKjZofPFf1QHjGR4CqhsxrWhePB5t2TufV"
+    },
+    {
+      "timestamp": "2026-04-23T06:13:20.338Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "5n5FBx2di2hXs7VLaWGCZZ2Gdps8VpgsR8K1DJnXLwEL",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "HGMBWykf4K1du3qGhajQfqdX6SNoEbLJizBNuEhCv54u",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "84FZbRKJ6M1RQDdWdrroLth9FW1WeYrEx8DsEoHnQnJRk7Be6hm7BspAPZiiRStt1bMSdvudUkHuzX8gywdJ1yt"
+    },
+    {
+      "timestamp": "2026-04-23T06:13:53.180Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "32mPaLKBiWAb88EWTVi6cQgfqNdRE9xe139skkW8gHJr",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "21mPNNfckmfzxk6NHZazTPB2mLxbdnQgCzFaL88xHKTu",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "4PvgqPCsccJE44fCmpaZPLjqxrp3cZHDbZ2YaNUSDJGcLFsZHHPEYy1afzZN9PrVkosSdsmuu5acgETu84gGPDFi"
+    },
+    {
+      "timestamp": "2026-04-23T06:23:05.377Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "EwMHKeLwXxBcxamkkSxSwNhPr9KMgPLRDVHzN8sZhEou",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "4AuD737d8aKUUAStdCfKfgUrK3xUPFAjYfQeNnxPpdvU",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "5UH87JmjAEHG2FBEsrKBU7uXAByubdDmwwWVWWXH9LYMgWCftGsR8yv2fG5oKjA7ydX2W3JnJfuH8DP5fyCrghwg"
+    },
+    {
+      "timestamp": "2026-04-23T06:23:16.729Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "2hDZv9TWejnGpLj7wTzjBeYtfZdip93x1hXj9FxjVfWe",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "BFMREXVFnRKGi7qV3ykEzG6siUf4aVy3mxP3No9T4reh",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "2EWcr2cdHv82biuvuuQ4PS6rYZFJGisRmgG72ztMWPK8tVriVGBjW4jqCNDqUuCUU1m57QQmbrdXC3CMFi8u4pYN"
+    },
+    {
+      "timestamp": "2026-04-23T06:49:30.913Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "H5nkCqzKhrB2Ewh2sXV1QzidAa7J5P8bmfQHDBCQgrRr",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "6aCDBqXKJrGsBXWFJxxxK8kvmZY6P2AMJLWxo4TF4hzh",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "4dJuX88YrA7LrFctehvzhTST9MiZbd7MQV2RTBCGchMGX9wETBdeSpXU77swsRLrbo3yUZDM1RMRvhvtNy3FeVHE"
+    },
+    {
+      "timestamp": "2026-04-23T06:49:40.790Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "7mXcUm1GNCX3NUfuFKXm2nRcNVRbJudXdDBUouJtxNUn",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "8kbepFUqXRtak3L5HQyaUzA7W3UNwq9G8xCoXnCA3fy9",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "3oB8G9yPy9pkkzMrAWffBmXo29psHrnpRtCkby5UrFA3tcCFRuLwMNnqausUZ6qSVPAf21pxxCTZGbsxx3ey9MQb"
+    },
+    {
+      "timestamp": "2026-04-23T07:32:35.306Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "63gLMFdWSupc4wQJdYfxAsfd1hpFPa65MT4y3ZqkuAtL",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "8KrS53rm2XH8geocLifZCLya92FQ16Y3x4MhWmd3teBM",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "32zpEcMJbhPvJaq59RGKXb5H2J9B9uLwWbi3dvEZXuZ2svVcJ1LaTUcTVvfS2s1Cb3yEiwA86B8cykJQFdUAfC5z"
+    },
+    {
+      "timestamp": "2026-04-23T07:32:48.072Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "9AC2vmS6KoxE32ZhAxVErcXXUpFJdXDc48T2PCGHKu9V",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "G41LEicjRCa3QsZNH58XfrQZ2XUhEMbAVwv9sX8FTzxE",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "3pLAzNRZ7Sz4DqTJfakfkyerpR12YGVmi4EspHQTQ5NLBrGXG6Nr5pX9LGT2V3pqyDqMe4ARpwweTgx2NZB6WCJG"
+    },
+    {
+      "timestamp": "2026-04-23T09:06:34.502Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "7Ru62uNfTEqx748XweWjLgjeJrT7KWjCsiocnK7Qqx9",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "DQmS8Yzz7GCTWARnY3BDL8ZVByrJEfpdaBhowTEUbdmb",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "4yAXuwFtwPFgnbYLagAY1uwcGcfHdJEpAh9fg15qZoGkoP4i6JHZX7hY4HPkdnF9gF84qeVWJQTnB4prVCFbQpKZ"
+    },
+    {
+      "timestamp": "2026-04-23T09:49:37.745Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "9JXRKWPG6LeijE9gDMePhPfFDh7ErM2sqvpLfPQoKzTL",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "7SAxc83fyaEyo6GCgkcA4mJJGxojzyXB8vcgFSYqrYY4",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "5EECHUcbQh5pY5nEQompJA5NTcSvK5rG4rqyEU1UYDfcDgiuHdqVXzQj5o2y84mdNDibn2BFSbp3ooQmdxjGHDgG"
+    },
+    {
+      "timestamp": "2026-04-23T09:49:45.776Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "DjVpbXvDAqmTjSpRaggzKWevjiywQmy3V8ps162tosKy",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "GGGqoVo93AXrwBwtFPnD9yqrSCY6DYeNsye57kSfEwML",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "65QsdoKsPJpGKEnFBchnL3PLMKFx2xTU6psirezZihQU6nfu3tmKEiEsTE3vHD1dSkai5SiStAnX4ZHxuHbKedkE"
+    },
+    {
+      "timestamp": "2026-04-23T10:21:17.053Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "RdgWW9Lks7tGtCqgFAo5gj2gsBFG93XXHHQ3xM6MWfr",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "HgZSVxVtNe8ghDRtgkD1mfjEQePU1ySMp8AQ9sDKo4mU",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "5R8gAjg3xpXpD42vRnu25ZMX81LqcVAewXW1tuBLdyMR9Nz94gWTc9MeTiih9Z8gszFxCJc3yZkMD3ytajrmbj7T"
+    },
+    {
+      "timestamp": "2026-04-23T10:21:31.996Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "DuyxLALbd8QzBZbiu4Z7DcmxahoF8pPEDM7dFVdYipKy",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "CXhPSfMtSPqrmWwWcC5KmicZ64NHQKtixE1h5M66ea8s",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "ztJn2qQM1vJAfDfrsBeh4ZTgHF5JWskyiVswGcDhiZyobCycir1Ek9kp1iv3H7wEcjLFnoac23j19DD1puv9JDX"
+    },
+    {
+      "timestamp": "2026-04-28T05:47:04.569Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "BXCXfa4L7RzLzdKVv1DnDcQRgf2RKt7SUPSrtcVB78Kt",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "EFApKnTJHaBQwFmiPfcyLFnjbGtQDCAYYWDqtWPbCNiU",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "2DrWqfFxq3KeC6yyFdMF56wkkFsHbXj655CyPDZDocn2saVSc6ZCX2aSAnYRRut9vhVGaV5stcaBiE8Jugz1f2aZ"
+    },
+    {
+      "timestamp": "2026-04-28T09:59:13.177Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "QSjA84PKbYs79KT12uCCqHodqqQq7u56ecmPYvXsrUg",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "3xXPK2PeJM6HGwBQYFbMojn6UcjD1g9CzGfPBytVp4gJ",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "gM8Gxu6dXBgFzsaTK3BQMDsAkXVCpnAs1TxtQWP9oMDFZCqE9cgZUPWFyWmNL3k2mT9wMzYS1YkemcnfMBMxXy3"
+    },
+    {
+      "timestamp": "2026-04-28T09:59:20.798Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "Sf6sjMusN1Bn9URkBcXa6KJJRL4YDVZZxQoPy789E5C",
+      "recipient": "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz",
+      "ata": "AMpkXeG8Zc8qLSKY4mPt58bHvi6jvdnSBjsSXu29dURf",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "5UZDTSgPkiRtNHuQWgvEFW27chNQJYrZf3ydfdC33d6EgCuWDKR7ApeVdt9UmXAXWyg15kybBwRNsbVsn1sYX1MR"
+    },
+    {
+      "timestamp": "2026-05-04T11:27:12.452Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "63gLMFdWSupc4wQJdYfxAsfd1hpFPa65MT4y3ZqkuAtL",
+      "recipient": "86rTS2ZvTXupdvPwLBpvhZiWWoqcQWTiQa2DiZvEn5GY",
+      "ata": "6DaiivK1CPidGkmWMr2RuD5WCKW9ZsAc8z7nUQ7f7o9U",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "5DpCSjWwvfeTLiGQVxhMnMBhJYLpxrhbfGLwtqF9og6GEo9AxJqTagfJ3HGT2FnC11exLkS9BGMtRBwWLYQidJ9B"
+    },
+    {
+      "timestamp": "2026-05-04T11:28:11.226Z",
+      "rpc": "https://api.devnet.solana.com",
+      "mint": "EwMHKeLwXxBcxamkkSxSwNhPr9KMgPLRDVHzN8sZhEou",
+      "recipient": "86rTS2ZvTXupdvPwLBpvhZiWWoqcQWTiQa2DiZvEn5GY",
+      "ata": "5HwmheoKuC9GeuzwN3vT9HMXWqwU4AxSauq2hfWLYn3i",
+      "amountTokens": "2000",
+      "amountBaseUnits": "2000000000000",
+      "txSignature": "25qtKFUo76diiJMkRzqXL4X6XxoYhjhC8UTHnktuD5X7ddrG5DZQjxzBhydZZRLTya4nCLBL6UbFk7ohBjBHbXWr"
+    }
+  ]
+}
