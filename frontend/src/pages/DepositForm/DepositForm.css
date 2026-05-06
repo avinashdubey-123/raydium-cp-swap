@@ -1,0 +1,365 @@
+/* Simple dark card styling to match app theme */
+.deposit-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 112px 20px;
+  background:
+    radial-gradient(80% 80% at 50% -10%, rgba(38, 70, 125, 0.35) 0%, rgba(11, 15, 29, 0) 55%),
+    radial-gradient(120% 120% at 10% 0%, #0e162c 0%, #0a0f1f 60%, #070b16 100%);
+}
+
+.deposit-layout {
+  display: flex;
+  width: 100%;
+  max-width: 1100px;
+  gap: 40px;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.deposit-sidebar {
+  width: 55px;
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.deposit-main {
+  flex: 1;
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+}
+
+.deposit-page__back {
+  background: transparent;
+  border: none;
+  font-weight: 600;
+  color: var(--if-text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  align-self: flex-start;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.deposit-page__back:hover {
+  color: var(--if-text-primary);
+}
+
+.deposit-card {
+  width: 820px;
+  background: #0f1929;
+  border: 1px solid #1e2d45;
+  border-radius: 16px;
+  padding: 20px;
+  color: var(--if-text-light);
+  box-shadow: 0 12px 30px rgba(6, 10, 20, 0.5);
+}
+
+.deposit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 16px;
+}
+
+.deposit-title h2 {
+  margin: 0 0 6px;
+}
+
+.deposit-subtitle {
+  color: var(--if-text-secondary);
+  font-size: 13px;
+}
+
+.deposit-metrics {
+  display: flex;
+  gap: 12px;
+}
+
+.metric {
+  background: #131c2e;
+  border: 1px solid #1e2d45;
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 140px;
+  text-align: right;
+}
+
+.metric span {
+  display: block;
+  color: var(--if-text-muted);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.metric strong {
+  color: var(--if-text-light);
+  font-size: 14px;
+}
+
+.deposit-pool-meta span {
+  display: inline-block;
+  margin-left: 12px;
+  color: var(--if-text-secondary);
+  font-size: 13px;
+}
+
+.deposit-body {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 16px;
+}
+
+.deposit-panel {
+  background: #131c2e;
+  border: 1px solid #1e2d45;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.deposit-panel h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--if-text-primary);
+}
+
+.address-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--if-text-secondary);
+}
+
+.address-value {
+  color: var(--if-text-light);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.view-btn {
+  background: rgba(57, 162, 194, 0.12);
+  border: 1px solid rgba(57, 162, 194, 0.5);
+  border-radius: 8px;
+  padding: 4px 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.view-btn:hover:not(:disabled) {
+  background: rgba(57, 162, 194, 0.2);
+  border-color: rgba(57, 162, 194, 0.8);
+  box-shadow: 0 0 0 2px rgba(57, 162, 194, 0.15);
+}
+
+.view-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.view-btn img {
+  width: 14px;
+  height: 14px;
+}
+
+.deposit-form {
+  display: block;
+}
+
+.token-row {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.token-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.token-label {
+  font-size: 13px;
+  color: var(--if-text-primary);
+}
+
+.token-address {
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--if-text-secondary);
+}
+
+.deposit-input {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--if-input-border);
+  background: var(--if-input-bg);
+  color: var(--if-text-primary);
+  font-size: 16px;
+  text-align: right;
+}
+
+.deposit-actions-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn.primary {
+  background: var(--if-accent);
+  color: #051019;
+  font-weight: 600
+}
+
+.btn.secondary {
+  background: transparent;
+  border: 1px solid var(--if-btn-border);
+  color: var(--if-text-secondary)
+}
+
+.btn.neutral {
+  background: var(--if-btn-bg);
+  color: var(--if-text-light)
+}
+
+.quote-controls {
+  display: flex;
+  gap: 8px;
+}
+
+
+.deposit-summary {
+  margin-top: 16px;
+  color: var(--if-text-secondary);
+  display: flex;
+  gap: 16px
+}
+
+.deposit-quote {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #111a33;
+  border: 1px solid #243154;
+  color: var(--if-text-light)
+}
+
+.deposit-note {
+  margin-top: 12px;
+  color: var(--if-text-muted);
+  font-size: 13px
+}
+
+.deposit-hover-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.deposit-hover-card {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 100;
+  min-width: 260px;
+  padding: 10px 12px;
+  background: rgba(27, 38, 56, 0.96);
+  border: 1px solid #2b3a55;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  color: var(--if-text-light);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+
+.deposit-hover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.deposit-hover-card strong {
+  color: var(--if-text-primary);
+}
+
+.deposit-copy-btn {
+  background: rgba(57, 162, 194, 0.12);
+  border: 1px solid var(--if-accent);
+  color: var(--if-accent);
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.08s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.deposit-copy-btn img {
+  width: 14px;
+  height: 14px;
+}
+
+.deposit-copy-btn:hover {
+  background: var(--if-accent);
+  color: #061014;
+}
+
+.deposit-copy-btn:active {
+  transform: scale(0.96);
+  box-shadow: 0 0 0 2px rgba(57, 162, 194, 0.25);
+}
+
+.if-page__content {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.if-page__form {
+  width: 100%;
+  max-width: 860px;
+}
+
+@media (max-width: 900px) {
+  .deposit-card {
+    width: 100%;
+  }
+
+  .deposit-body {
+    grid-template-columns: 1fr;
+  }
+
+  .token-row {
+    grid-template-columns: 1fr;
+  }
+
+  .deposit-metrics {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+}

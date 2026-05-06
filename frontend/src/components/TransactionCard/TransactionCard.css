@@ -1,0 +1,138 @@
+.tx-card {
+  background: #1a1f2e;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border: 1px solid #2d3748;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tx-card--success {
+  border-left: 4px solid #10b981;
+}
+
+.tx-card--error {
+  border-left: 4px solid #ef4444;
+}
+
+.tx-card--info {
+  border-left: 4px solid #3b82f6;
+}
+
+.tx-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tx-card__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex: 1;
+}
+
+.tx-card__badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-top: 2px;
+  min-width: 42px;
+  text-align: center;
+}
+
+.tx-card--success .tx-card__badge {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.tx-card--error .tx-card__badge {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.tx-card--info .tx-card__badge {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.tx-card__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f7fafc;
+  margin-bottom: 4px;
+}
+
+.tx-card__message {
+  font-size: 14px;
+  color: #a0aec0;
+  line-height: 1.4;
+}
+
+.tx-card__close {
+  background: none;
+  border: none;
+  color: #718096;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.tx-card__close:hover {
+  background: #2d3748;
+  color: #e2e8f0;
+}
+
+.tx-card__link {
+  display: inline-block;
+  margin-top: 12px;
+  color: #63b3ed;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.tx-card__link:hover {
+  color: #90cdf4;
+  text-decoration: underline;
+}
+
+.tx-card__details {
+  margin-top: 14px;
+}
+
+.tx-card__details-btn {
+  background: none;
+  border: 1px solid #4a5568;
+  color: #cbd5e0;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tx-card__details-btn:hover {
+  background: #2d3748;
+  border-color: #718096;
+}
+
+.tx-card__details-pre {
+  margin-top: 12px;
+  padding: 12px;
+  background: #0d1117;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #c9d1d9;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+}

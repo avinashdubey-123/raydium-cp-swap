@@ -1,0 +1,57 @@
+.rcs-header {
+  width: 100%;
+  background: linear-gradient(90deg, #0b1221, #071029);
+  color: #fff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  padding: 16px 38px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto;
+  position: fixed;
+  z-index: 100;
+}
+
+.rcs-logo img{
+  height: 40px;
+  margin-top: 8px;
+}
+
+.rcs-nav {
+  display: flex;
+  gap: 24px;
+  margin-left: 8px;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+}
+
+.rcs-nav__item {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  color: rgb(85, 96, 130);
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.rcs-nav__item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: rgb(155, 172, 214);
+}
+
+.rcs-nav__item.active {
+  color: rgb(155, 172, 214);
+}
+
+.rcs-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wallet-adapter-button-trigger {
+  background-color: #11204c;
+}
+
+.wallet-adapter-button {
+  border-radius: 20px;
+}

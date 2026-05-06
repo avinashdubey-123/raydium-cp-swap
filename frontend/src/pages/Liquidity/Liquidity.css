@@ -1,0 +1,449 @@
+/* ── Page wrapper ── */
+.lp-page {
+  padding: 112px 40px;
+  background: #0b1221;
+  min-height: 100vh;
+  color: #c8d4e8;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── Top section: title + stat cards ── */
+.lp-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.lp-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  padding-bottom: 8px;
+  background: linear-gradient(90deg, #39d0d8, #2b6cb0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.lp-subtitle {
+  font-size: 14px;
+  color: #7a8fa6;
+  margin: 0;
+}
+
+.lp-stats {
+  display: flex;
+  gap: 16px;
+}
+
+.lp-stat-card {
+  background: #131c2e;
+  border: 1px solid #1e2d45;
+  border-radius: 12px;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.lp-stat-label {
+  font-size: 12px;
+  color: #7a8fa6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lp-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #e6f0ff;
+}
+
+/* ── Filter bar ── */
+.lp-filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.lp-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.lp-filter {
+  background: transparent;
+  border: 1px solid #1e2d45;
+  color: #7a8fa6;
+  padding: 7px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+
+.lp-filter:hover {
+  border-color: #39d0d8;
+  color: #39d0d8;
+}
+
+.lp-filter.active {
+  background: #1a3a4a;
+  border-color: #39d0d8;
+  color: #39d0d8;
+  font-weight: 600;
+}
+
+.lp-filter-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lp-search {
+  background: #131c2e;
+  border: 1px solid #1e2d45;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #c8d4e8;
+  font-size: 13px;
+  outline: none;
+  width: 200px;
+  transition: border-color 0.15s;
+}
+
+.lp-search::placeholder {
+  color: #4a5a70;
+}
+
+.lp-search:focus {
+  border-color: #39d0d8;
+}
+
+.lp-create-btn {
+  background: transparent;
+  border: 1px solid #39d0d8;
+  color: #39d0d8;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.lp-create-btn:hover {
+  background: #39d0d8;
+  color: #061014;
+}
+
+/* ── Table ── */
+.lp-table-wrap {
+  background: #0f1929;
+  border: 1px solid #1e2d45;
+  border-radius: 16px;
+  overflow: visible;
+  margin-bottom: 20px;
+}
+
+.lp-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.lp-th {
+  padding: 14px 20px;
+  text-align: right;
+  font-size: clamp(10px, 0.9vw, 12px);
+  font-weight: 600;
+  color: #4a5a70;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #1e2d45;
+  background: #0b1221;
+}
+
+.lp-th-pool {
+  text-align: left;
+}
+
+.lp-row {
+  transition: background 0.12s;
+}
+
+.lp-row:hover {
+  background: #131c2e;
+}
+
+.lp-row:not(:last-child) .lp-td {
+  border-bottom: 1px solid #1a2640;
+}
+
+.lp-td {
+  padding: 16px 20px;
+  text-align: right;
+  font-size: clamp(12px, 1vw, 14px);
+  color: #c8d4e8;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.lp-col-loading {
+  width: 48px;
+  text-align: center;
+}
+
+.lp-col-pool {
+  width: 36%;
+  text-align: left;
+}
+
+.lp-col-liquidity {
+  width: 20%;
+  text-align: center;
+}
+
+.lp-col-volume {
+  width: 12%;
+  text-align: center;
+}
+
+.lp-col-fees {
+  width: 10%;
+  text-align: center;
+}
+
+.lp-col-apr {
+  width: 10%;
+  text-align: center;
+}
+
+.lp-col-actions {
+  width: 12%;
+  text-align: right;
+}
+
+.lp-col-loading {
+  width: 48px;
+  text-align: center;
+}
+
+.lp-col-pool {
+  width: 36%;
+  text-align: left;
+}
+
+.lp-col-liquidity {
+  width: 20%;
+  text-align: center;
+}
+
+.lp-col-volume {
+  width: 12%;
+  text-align: center;
+}
+
+.lp-col-fees {
+  width: 10%;
+  text-align: center;
+}
+
+.lp-col-apr {
+  width: 12%;
+  text-align: center;
+}
+
+.lp-col-actions {
+  width: 10%;
+  text-align: right;
+}
+
+/* Pool name cell */
+.lp-td-pool {
+  text-align: left;
+}
+
+.lp-td-pool-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lp-pool-icons {
+  display: flex;
+  align-items: center;
+}
+
+.lp-hover-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.lp-hover-card {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  z-index: 100;
+  min-width: 260px;
+  padding: 10px 12px;
+  background: rgba(27, 38, 56, 0.96);
+  border: 1px solid #2b3a55;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  color: #e6f0ff;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+
+.lp-hover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lp-hover-row + .lp-hover-row {
+  margin-top: 6px;
+}
+
+.lp-hover-card strong {
+  color: #cfe4ff;
+}
+
+.lp-copy-btn {
+  background: rgba(57, 208, 216, 0.08);
+  border: 1px solid #39d0d8;
+  color: #39d0d8;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.08s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.lp-copy-btn img {
+  width: 14px;
+  height: 14px;
+}
+
+.lp-copy-btn:hover {
+  background: #39d0d8;
+  color: #061014;
+}
+
+.lp-copy-btn:active {
+  transform: scale(0.96);
+  box-shadow: 0 0 0 2px rgba(57, 208, 216, 0.25);
+}
+
+.lp-icon {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #0b1221;
+}
+
+.lp-icon-a {
+  background: linear-gradient(135deg, #9945ff, #14f195);
+  z-index: 1;
+}
+
+.lp-icon-b {
+  background: linear-gradient(135deg, #2775ca, #27b0ca);
+  margin-left: -10px;
+}
+
+.lp-pool-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lp-pool-name {
+  font-weight: 600;
+  color: #e6f0ff;
+  font-size: 14px;
+}
+
+.lp-pool-fee {
+  font-size: 11px;
+  color: #39d0d8;
+  background: rgba(57, 208, 216, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+/* APR column */
+.lp-apr-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.lp-apr-value {
+  font-weight: 700;
+  color: #e6f0ff;
+  font-size: 15px;
+}
+
+.lp-apr-bar {
+  width: 80px;
+  height: 4px;
+  background: #1e2d45;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.lp-apr-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #39d0d8, #9945ff);
+  border-radius: 2px;
+  min-width: 4px;
+}
+
+/* Actions cell */
+.lp-td-actions {
+  text-align: right;
+}
+
+.lp-deposit-btn {
+  background: transparent;
+  border: 1px solid #39d0d8;
+  color: #39d0d8;
+  padding: clamp(5px, 0.6vw, 7px) clamp(10px, 1.2vw, 18px);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: clamp(11px, 1vw, 13px);
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.lp-deposit-btn:hover {
+  background: #39d0d8;
+  color: #061014;
+}
+
+/* ── Footer note ── */
+.lp-note {
+  font-size: 12px;
+  color: #4a5a70;
+  text-align: center;
+  margin-top: 8px;
+}
