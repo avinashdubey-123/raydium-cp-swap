@@ -1,7 +1,6 @@
 import BN from "bn.js";
 import { Connection, PublicKey } from "@solana/web3.js";
 import {
-    TOKEN_PROGRAM_ID,
     TOKEN_2022_PROGRAM_ID,
     getMint,
     calculateEpochFee,

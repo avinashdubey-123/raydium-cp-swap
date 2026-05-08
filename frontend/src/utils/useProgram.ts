@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import { AnchorProvider, Program, Idl } from '@coral-xyz/anchor'
-import { PublicKey } from '@solana/web3.js'
 import idlJson from '../../idl/raydium_cp_swap.json'
 
 export default function useProgram(): Program | null {

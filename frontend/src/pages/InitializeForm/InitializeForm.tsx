@@ -120,7 +120,7 @@ export default function InitializeForm() {
         const sorted = all.map((a: any) => ({
           ...a.account,
           publicKey: a.publicKey
-        })).sort((a, b) => a.index - b.index)
+        })).sort((a: { index: number }, b: { index: number }) => a.index - b.index)
         setConfigs(sorted)
         if (sorted.length > 0 && !ammConfig) {
           setAmmConfig(sorted[0].publicKey.toBase58())
