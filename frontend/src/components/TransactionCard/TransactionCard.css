@@ -28,7 +28,7 @@
 
 .tx-card__status {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 14px;
   flex: 1;
 }
@@ -39,9 +39,16 @@
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  margin-top: 2px;
   min-width: 42px;
   text-align: center;
+  flex-shrink: 0;
+}
+
+.tx-card__text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
 }
 
 .tx-card--success .tx-card__badge {
@@ -108,19 +115,24 @@
 }
 
 .tx-card__details-btn {
-  background: none;
-  border: 1px solid #4a5568;
-  color: #cbd5e0;
+  background: var(--btn-outline-bg);
+  border: 1px solid var(--btn-outline-border);
+  color: var(--btn-outline-text);
   font-size: 13px;
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
 }
 
 .tx-card__details-btn:hover {
-  background: #2d3748;
-  border-color: #718096;
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
+}
+
+.tx-card__details-btn:active {
+  background: var(--btn-outline-active-bg);
+  border-color: var(--btn-outline-active-border);
 }
 
 .tx-card__details-pre {
@@ -128,7 +140,7 @@
   padding: 12px;
   background: #0d1117;
   border-radius: 8px;
-  font-family: monospace;
+  font-family: var(--mono);
   font-size: 12px;
   color: #c9d1d9;
   overflow-x: auto;

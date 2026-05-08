@@ -1,5 +1,4 @@
 :root {
-	/* InitializeForm color palette - semantic naming */
 	--if-bg: #0b0f1d;
 	--if-card: #1b2443;
 	--if-card-alt: #151c35;
@@ -12,8 +11,6 @@
 	--if-accent-active: #207d99;
 	--if-input-bg: #0e162c;
 	--if-input-border: #273357;
-	--if-btn-bg: #141f36;
-	--if-btn-border: #2b3b60;
 	--if-link: #7ff6ff;
 	--if-link-hover: #b7fbff;
 	--if-success: #7fd9ff;
@@ -23,7 +20,6 @@
 	--if-text-dim: #7083aa;
 }
 
-/* Page layout */
 .initialize-page {
   display: flex;
   flex-direction: column;
@@ -96,7 +92,6 @@
   max-width: 600px;
 }
 
-/* Note/info box */
 .initialize-note {
   background: linear-gradient(180deg, #1b2546 0%, #151e37 100%);
   border: 1px solid #2a3558;
@@ -121,7 +116,6 @@
   color: var(--if-text-secondary);
 }
 
-/* Links */
 .initialize-link {
   color: var(--if-link);
   text-decoration: none;
@@ -132,7 +126,6 @@
   color: var(--if-link-hover);
 }
 
-/* Card */
 .initialize-card {
   width: 100%;
   background: linear-gradient(180deg, var(--if-card) 0%, var(--if-card-alt) 100%);
@@ -146,7 +139,6 @@
   margin-bottom: 16px;
 }
 
-/* Typography */
 .initialize-title {
   margin: 0 0 6px 0;
   font-size: 15px;
@@ -161,7 +153,6 @@
   letter-spacing: 0.12em;
 }
 
-/* Liquidity section */
 .initialize-liquidity {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -184,7 +175,6 @@
   text-align: left;
 }
 
-/* Divider */
 .initialize-divider {
   width: 30px;
   height: 30px;
@@ -192,11 +182,10 @@
   display: grid;
   place-items: center;
   background: #1b2540;
-  border: 1px solid var(--if-btn-border);
+  border: 1px solid var(--btn-outline-border);
   color: var(--if-text-secondary);
 }
 
-/* Form fields */
 .initialize-field {
   display: flex;
   flex-direction: column;
@@ -218,7 +207,7 @@
   text-align: left;
 }
 
-/* Inputs */
+
 .initialize-input,
 .initialize-select {
   width: 100%;
@@ -235,7 +224,6 @@
   color: var(--if-text-dim);
 }
 
-/* Price display */
 .initialize-price {
   display: flex;
   align-items: center;
@@ -264,7 +252,6 @@
   white-space: nowrap;
 }
 
-/* Price toggle - icon button + non-clickable text label */
 .initialize-price-toggle {
   display: inline-flex;
   align-items: center;
@@ -273,21 +260,27 @@
 }
 
 .initialize-price-toggle__btn {
-  background: none;
-  border: none;
+  background: var(--btn-outline-bg);
+  border: 1px solid var(--btn-outline-border);
+  color: var(--btn-outline-text);
   cursor: pointer;
   padding: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.2s ease;
-  border: 1px solid;
-  border-radius: 4px;
-  border-color: #7ff6ff;
+  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
+  border-radius: 8px;
 }
 
 .initialize-price-toggle__btn:hover {
-  opacity: 0.7;
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
+  box-shadow: 0 0 0 1px rgba(57, 208, 216, 0.12);
+}
+
+.initialize-price-toggle__btn:active {
+  background: var(--btn-outline-active-bg);
+  border-color: var(--btn-outline-active-border);
 }
 
 .initialize-price-toggle__icon {
@@ -302,7 +295,6 @@
   user-select: none;
 }
 
-/* Buttons */
 .initialize-actions {
   display: flex;
   gap: 10px;
@@ -311,56 +303,41 @@
 
 .initialize-btn {
   padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--if-btn-border);
-  background: var(--if-btn-bg);
-  color: var(--if-text-light);
+  border-radius: var(--btn-radius);
+  border: 1px solid transparent;
+  background: var(--btn-solid-bg);
+  color: var(--btn-solid-text);
   cursor: pointer;
+  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
 }
 
 .initialize-btn--primary {
   flex: 1;
-  background: var(--if-accent);
-  color: #051019;
   font-weight: 600;
-  border: none;
-  transition: background 0.2s ease, transform 0.1s ease;
 }
 
 .initialize-btn--primary:hover {
-  background: var(--if-accent-hover);
+  background: var(--btn-solid-hover-bg);
 }
 
 .initialize-btn--primary:active {
-  background: var(--if-accent-active);
+  background: var(--btn-solid-active-bg);
   transform: scale(0.98);
 }
 
 .initialize-btn--ghost {
   background: transparent;
-  border-color: var(--if-btn-border);
-  color: var(--if-text-secondary);
-  transition: background 0.2s ease, color 0.2s ease;
+  border-color: var(--btn-outline-border);
+  color: var(--btn-outline-text);
 }
 
 .initialize-btn--ghost:hover {
-  background: rgba(159, 179, 217, 0.1);
-  color: var(--if-text-primary);
-}
-
-.initialize-btn--compact {
-  padding: 8px 10px;
-  font-size: 11px;
-}
-
-.initialize-btn--tiny {
-  padding: 6px 10px;
-  font-size: 12px;
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
 }
 
 .initialize-btn:not(:disabled):hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .initialize-btn:not(:disabled):active {
@@ -372,4 +349,39 @@
   cursor: not-allowed;
   transform: none !important;
   box-shadow: none !important;
+}
+
+.initialize-config-address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: var(--if-card-alt);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--if-text-secondary);
+  border: 1px dashed var(--if-input-border);
+}
+
+.initialize-copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.initialize-copy-btn:hover {
+  opacity: 1;
+}
+
+.initialize-copy-btn img {
+  width: 14px;
+  height: 14px;
+  filter: invert(72%) sepia(21%) Hue-rotate(185deg) brightness(97%) contrast(92%);
 }

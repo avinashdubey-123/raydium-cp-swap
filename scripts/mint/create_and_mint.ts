@@ -70,9 +70,9 @@ async function main() {
   const rpc = "https://api.devnet.solana.com"; // RPC endpoint
   const payerPath = "/home/avinash_dubey/.config/solana/anchor-base.json"; // path to payer keypair JSON (no trailing space)
   const decimals = 9; // mint decimals
-  const mintArg: string = "EwMHKeLwXxBcxamkkSxSwNhPr9KMgPLRDVHzN8sZhEou"; // "new" or existing mint pubkey string
+  const mintArg: string = "9JXRKWPG6LeijE9gDMePhPfFDh7ErM2sqvpLfPQoKzTL"; // "new" or existing mint pubkey string
   // Single recipient: format "ADDRESS" or "ADDRESS:AMOUNT" (amount in token units)
-  const recipientArg: string = "86rTS2ZvTXupdvPwLBpvhZiWWoqcQWTiQa2DiZvEn5GY:2000"; // <<< REPLACE before running
+  const recipientArg: string = "wE2EtwuovRxvXZoThsXhRTuCrFdAA1jTbLnJp9nfezL:2000"; // <<< REPLACE before running
 
   if (recipientArg.includes("REPLACE_WITH_RECIPIENT_PUBKEY")) {
     console.error("Please edit scripts/mint/create_and_mint.ts and set `recipientArg` to a real recipient pubkey before running.");

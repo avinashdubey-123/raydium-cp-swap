@@ -11,6 +11,37 @@ body {
 }
 
 :root {
+  --font-body: 'Space Grotesk', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --font-heading:  'Space Grotesk', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --font-mono: ui-monospace, Consolas, monospace;
+
+  --sans: var(--font-body);
+  --heading: var(--font-heading);
+  --mono: var(--font-mono);
+
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-md: 18px;
+  --font-size-lg: 20px;
+  --font-size-xl: 24px;
+  --font-size-2xl: 28px;
+  --font-size-3xl: 36px;
+  --font-size-4xl: 56px;
+
+  --line-height-tight: 120%;
+  --line-height-normal: 145%;
+  --line-height-relaxed: 160%;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --letter-spacing-tight: -1.68px;
+  --letter-spacing-normal: 0.18px;
+  --letter-spacing-loose: 0.5px;
+
   --text: #6b6375;
   --text-h: #08060d;
   --bg: #fff;
@@ -21,11 +52,23 @@ body {
   --accent-border: rgba(170, 59, 255, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
+
+  --btn-outline-bg: transparent;
+  --btn-outline-border: #39d0d8;
+  --btn-outline-text: #39d0d8;
+  --btn-outline-hover-bg: rgba(14, 24, 41, 0.88);
+  --btn-outline-hover-border: rgba(77, 222, 228, 0.95);
+  --btn-outline-active-bg: rgba(9, 18, 33, 0.95);
+  --btn-outline-active-border: rgba(57, 208, 216, 0.72);
+  --btn-solid-bg: #39d0d8;
+  --btn-solid-hover-bg: #4edde4;
+  --btn-solid-active-bg: #2d85a8;
+  --btn-solid-text: #181F35;
+  --btn-radius: 12px;
+  --btn-transition: 0.15s ease;
+
+  font: var(--font-size-md) / var(--line-height-normal) var(--font-body);
+  letter-spacing: var(--letter-spacing-normal);
   color-scheme: light dark;
   color: var(--text);
   background: var(--bg)
@@ -33,7 +76,8 @@ body {
 
 @media (max-width:1024px) {
   :root {
-    font-size: 16px
+    --font-size-base: 14px;
+    --font-size-md: 16px;
   }
 }
 
@@ -73,20 +117,20 @@ body {
 
 h1,
 h2 {
-  font-family: var(--heading);
-  font-weight: 500;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-medium);
   color: var(--text-h)
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
+  font-size: var(--font-size-4xl);
+  letter-spacing: var(--letter-spacing-tight);
   margin: 32px 0
 }
 
 h2 {
-  font-size: 24px;
-  line-height: 118%;
+  font-size: var(--font-size-xl);
+  line-height: var(--line-height-tight);
   letter-spacing: -0.24px;
   margin: 0 0 8px
 }
@@ -97,26 +141,36 @@ p {
 
 @media (max-width:1024px) {
   h1 {
-    font-size: 36px;
+    font-size: var(--font-size-3xl);
     margin: 20px 0
   }
 
   h2 {
-    font-size: 20px
+    font-size: var(--font-size-lg)
   }
 }
 
 code,
 .counter {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   display: inline-flex;
   border-radius: 4px;
   color: var(--text-h)
 }
 
 code {
-  font-size: 15px;
+  font-size: var(--font-size-sm);
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg)
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1d2a47 #0a0f1f;
+}
+
+.page-title-inline {
+  display: inline-block;
+  width: auto;
 }

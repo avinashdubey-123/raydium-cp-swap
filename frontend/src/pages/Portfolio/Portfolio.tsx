@@ -6,10 +6,9 @@ import * as anchor from '@coral-xyz/anchor'
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import useProgram from '../../utils/useProgram'
 import { getPoolVaultAddress } from '../../utils/pda'
-import { getPriceUsd, formatUsd } from '../../utils/price'
+import { formatUsd } from '../../utils/price'
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import { RoundDirection } from '../../utils/curve/calculator'
-import WithdrawForm, { type WithdrawState } from '../WithdrawForm/WithdrawForm'
 import './Portfolio.css'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
@@ -60,10 +59,8 @@ const Portfolio = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [positions, setPositions] = useState<ComputedPosition[]>([])
-  const [withdrawState, setWithdrawState] = useState<WithdrawState | null>(null)
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
 
-  // Step 1: Load cached pools from on-chain
   const getPools = async (): Promise<Map<string, any>> => {
     try {
       if (!program) throw new Error('Program not ready')
@@ -80,16 +77,12 @@ const Portfolio = () => {
           poolKey: publicKey,
         })
       }
-
-      console.log(`Loaded ${poolsMap.size} pools from on-chain`)
       return poolsMap
     } catch (err) {
-      console.error('Failed to load pools:', err)
       return new Map()
     }
   }
 
-  // Step 2: Fetch user token accounts
   const getUserTokenAccounts = async (): Promise<any[]> => {
     try {
       if (!wallet.publicKey) throw new Error('Wallet not connected')
@@ -106,17 +99,14 @@ const Portfolio = () => {
     }
   }
 
-  // Step 3: Filter LP positions (tokens that are LP mints)
   const filterLPs = (tokenAccounts: any[], poolsData: Map<string, any>): LPPosition[] => {
     const lpMints = new Set<string>()
 
-    // Collect all LP mints from pools
     for (const poolState of poolsData.values()) {
       const lpMintPk = toPublicKey(poolState.lpMint)
       if (lpMintPk) lpMints.add(lpMintPk.toBase58())
     }
 
-    // Filter token accounts that are LP tokens and have balance > 0
     const lpPositions: LPPosition[] = []
 
     for (const tokenAccount of tokenAccounts) {
@@ -126,7 +116,6 @@ const Portfolio = () => {
       if (!mint || !tokenAmount) continue
 
       if (lpMints.has(mint) && Number(tokenAmount.uiAmount || 0) > 0) {
-        // Find corresponding pool
         let correspondingPool = null
         for (const [, poolState] of poolsData.entries()) {
           const poolLpMint = toPublicKey(poolState.lpMint)
@@ -175,13 +164,11 @@ const Portfolio = () => {
     return lpPositions
   }
 
-  // Step 4 & 5: Merge and compute share + underlying
   const computePositions = async (lpPositions: LPPosition[], poolsData: Map<string, any>): Promise<ComputedPosition[]> => {
     const computed: ComputedPosition[] = []
 
     for (const lpPos of lpPositions) {
       try {
-        // Find the corresponding pool data
         let poolState = null
         for (const [, ps] of poolsData.entries()) {
           const psLpMintStr = typeof ps.lpMint === 'string' ? ps.lpMint : ps.lpMint.toBase58()
@@ -227,13 +214,9 @@ const Portfolio = () => {
         const token0Amount = tokenAmount0.toNumber() / Math.pow(10, token0Decimals)
         const token1Amount = tokenAmount1.toNumber() / Math.pow(10, token1Decimals)
 
-        // Get prices
-        const token0Price = getPriceUsd(lpPos.token0Symbol)
-        const token1Price = getPriceUsd(lpPos.token1Symbol)
-
-        const token0Value = token0Price ? token0Amount * token0Price : null
-        const token1Value = token1Price ? token1Amount * token1Price : null
-        const totalValue = token0Value && token1Value ? token0Value + token1Value : null
+        const token0Value = 0
+        const token1Value = 0
+        const totalValue = 0
 
         computed.push({
           ...lpPos,
@@ -250,9 +233,9 @@ const Portfolio = () => {
           ...lpPos,
           token0Amount: 0,
           token1Amount: 0,
-          token0Value: null,
-          token1Value: null,
-          totalValue: null,
+          token0Value: 0,
+          token1Value: 0,
+          totalValue: 0,
         })
       }
     }
@@ -260,7 +243,6 @@ const Portfolio = () => {
     return computed
   }
 
-  // Main load effect
   useEffect(() => {
     if (!program || !wallet.publicKey || !connection) return
 
@@ -269,20 +251,12 @@ const Portfolio = () => {
         setLoading(true)
         setError(null)
 
-        // Step 1: Load pools
-        console.log('Step 1: Loading pools...')
         const loadedPools = await getPools()
 
-        // Step 2: Fetch user tokens
-        console.log('Step 2: Fetching user tokens...')
         const tokenAccounts = await getUserTokenAccounts()
 
-        // Step 3: Filter LP positions
-        console.log('Step 3: Filtering LP positions...')
         const lpPositions = filterLPs(tokenAccounts, loadedPools)
 
-        // Step 4 & 5: Compute positions
-        console.log('Step 4 & 5: Computing positions...')
         const computedPositions = await computePositions(lpPositions, loadedPools)
 
         setPositions(computedPositions)
@@ -371,38 +345,27 @@ const Portfolio = () => {
   }
 
   const openWithdraw = (pos: ComputedPosition) => {
-    setWithdrawState({
-      name: `${pos.token0Symbol || 'TOKEN0'}/${pos.token1Symbol || 'TOKEN1'}`,
-      poolPda: pos.poolPda.toBase58(),
-      token0: pos.token0Mint.toBase58(),
-      token1: pos.token1Mint.toBase58(),
-      token0Symbol: pos.token0Symbol,
-      token1Symbol: pos.token1Symbol,
-      lpAmount: pos.lpTokenAmount,
-      token0Amount: pos.token0Amount,
-      token1Amount: pos.token1Amount,
-      token0Value: pos.token0Value,
-      token1Value: pos.token1Value,
-      totalValue: pos.totalValue,
+    navigate('/liquidity/withdraw', {
+      state: {
+        poolPda: pos.poolPda.toBase58(),
+        token0: pos.token0Mint.toBase58(),
+        token1: pos.token1Mint.toBase58(),
+        token0Symbol: pos.token0Symbol,
+        token1Symbol: pos.token1Symbol,
+        lpAmount: pos.lpTokenAmount,
+        token0Amount: pos.token0Amount,
+        token1Amount: pos.token1Amount,
+        token0Value: pos.token0Value,
+        token1Value: pos.token1Value,
+        totalValue: pos.totalValue,
+      }
     })
   }
 
   return (
     <div className="portfolio-container">
-      {withdrawState ? (
-        <div className="portfolio-modal-backdrop" onClick={() => setWithdrawState(null)}>
-          <div className="portfolio-modal-shell" onClick={(event) => event.stopPropagation()}>
-            <WithdrawForm
-              embedded
-              state={withdrawState}
-              onClose={() => setWithdrawState(null)}
-            />
-          </div>
-        </div>
-      ) : null}
-
       <div className="portfolio-hero">
-        <h1>My Portfolio</h1>
+        <h1 className='portfolio-title'>My Portfolio</h1>
         <p>Wallet Overview</p>
       </div>
 
@@ -483,12 +446,10 @@ const Portfolio = () => {
       <div className="portfolio-section">
         <div className="section-header">
           <h2>My positions</h2>
-          <div className="section-tabs">
-            <button className="section-tab active" type="button">Liquidity</button>
-          </div>
           <div className="section-actions">
-            <span className="section-pill">Pending Yield 0</span>
-            <button className="section-cta" type="button">Harvest All</button>
+            <button className="section-cta" type="button" onClick={() => navigate('/portfolio/creator-fees')}>
+              Collect creator fees
+            </button>
           </div>
         </div>
 
@@ -561,7 +522,6 @@ const Portfolio = () => {
                         <span className="field-value">{formatUsd(pos.totalValue)}</span>
                       </div>
                       <div className="position-expander-actions">
-                        <button className="position-pill" type="button">Create New Position</button>
                         <button className="position-action minus" onClick={() => openWithdraw(pos)} aria-label="Withdraw liquidity">-</button>
                         <button className="position-action plus" onClick={() => openDeposit(pos)} aria-label="Add liquidity">+</button>
                       </div>

@@ -1,4 +1,3 @@
-/* Simple dark card styling to match app theme */
 .deposit-page {
   display: flex;
   flex-direction: column;
@@ -141,25 +140,32 @@
 
 .address-value {
   color: var(--if-text-light);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-family: var(--mono);
 }
 
 .view-btn {
-  background: rgba(57, 162, 194, 0.12);
-  border: 1px solid rgba(57, 162, 194, 0.5);
-  border-radius: 8px;
+  background: var(--btn-outline-bg);
+  border: 1px solid var(--btn-outline-border);
+  color: var(--btn-outline-text);
+  border-radius: 10px;
   padding: 4px 6px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
 }
 
 .view-btn:hover:not(:disabled) {
-  background: rgba(57, 162, 194, 0.2);
-  border-color: rgba(57, 162, 194, 0.8);
-  box-shadow: 0 0 0 2px rgba(57, 162, 194, 0.15);
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
+  box-shadow: 0 0 0 1px rgba(57, 208, 216, 0.12);
+}
+
+.view-btn:active:not(:disabled) {
+  background: var(--btn-outline-active-bg);
+  border-color: var(--btn-outline-active-border);
+  transform: translateY(1px);
 }
 
 .view-btn:disabled {
@@ -221,26 +227,34 @@
 
 .btn {
   padding: 8px 14px;
-  border-radius: 12px;
+  border-radius: var(--btn-radius);
   cursor: pointer;
-  border: none;
+  border: 1px solid transparent;
 }
 
 .btn.primary {
-  background: var(--if-accent);
-  color: #051019;
+  background: var(--btn-solid-bg);
+  color: var(--btn-solid-text);
   font-weight: 600
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--btn-solid-hover-bg);
+}
+
+.btn.primary:active:not(:disabled) {
+  background: var(--btn-solid-active-bg);
 }
 
 .btn.secondary {
   background: transparent;
-  border: 1px solid var(--if-btn-border);
-  color: var(--if-text-secondary)
+  border-color: var(--btn-outline-border);
+  color: var(--btn-outline-text)
 }
 
-.btn.neutral {
-  background: var(--if-btn-bg);
-  color: var(--if-text-light)
+.btn.secondary:hover:not(:disabled) {
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
 }
 
 .quote-controls {
@@ -306,16 +320,16 @@
 }
 
 .deposit-copy-btn {
-  background: rgba(57, 162, 194, 0.12);
-  border: 1px solid var(--if-accent);
-  color: var(--if-accent);
+  background: var(--btn-outline-bg);
+  border: 1px solid var(--btn-outline-border);
+  color: var(--btn-outline-text);
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.08s ease, background 0.12s ease, box-shadow 0.12s ease;
+  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
 }
 
 .deposit-copy-btn img {
@@ -324,13 +338,15 @@
 }
 
 .deposit-copy-btn:hover {
-  background: var(--if-accent);
-  color: #061014;
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
 }
 
 .deposit-copy-btn:active {
+  background: var(--btn-outline-active-bg);
+  border-color: var(--btn-outline-active-border);
   transform: scale(0.96);
-  box-shadow: 0 0 0 2px rgba(57, 162, 194, 0.25);
+  box-shadow: 0 0 0 1px rgba(57, 208, 216, 0.18);
 }
 
 .if-page__content {

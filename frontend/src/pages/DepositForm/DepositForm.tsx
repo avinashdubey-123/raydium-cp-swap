@@ -40,7 +40,6 @@ export default function DepositForm() {
   const program = useProgram()
   const wallet = useWallet()
 
-  // derive params for usePool: prefer explicit poolPda, else use token mints + ammConfig if provided
   const poolPdaParam = useMemo(() => {
     try {
       if (rawState?.poolPda) return new PublicKey(rawState.poolPda)
@@ -81,8 +80,6 @@ export default function DepositForm() {
 
   const { poolState, vault0Amount, vault1Amount, decimals0: hookDecimals0, decimals1: hookDecimals1, refresh: refreshPoolState } = usePool({ poolPda: poolPdaParam, ammConfig: ammConfigParam, token0Mint: token0MintParam, token1Mint: token1MintParam })
 
-  // DEBUG: Log vault amounts from hook
-  console.log('[DepositForm] usePool hook vault amounts:', { vault0Amount, vault1Amount, hookDecimals0, hookDecimals1, poolState: poolState ? 'exists' : 'null' })
 
   const poolName = poolFromRoute?.name ?? (poolState ? `Pool ${poolState?.lpMint?.toString?.()?.slice?.(0, 6) ?? 'Unknown'}` : 'Unknown Pool')
   const pool = poolFromRoute || { name: poolName, fee: '-' }
@@ -196,7 +193,6 @@ export default function DepositForm() {
   // prefer hook-provided UI amounts (already converted to UI amounts by usePool), else fall back to route-provided numeric values
   const totalVault0UI = (vault0Amount != null) ? vault0Amount : (pool.vault0Amount != null ? Number(pool.vault0Amount) : undefined)
   const totalVault1UI = (vault1Amount != null) ? vault1Amount : (pool.vault1Amount != null ? Number(pool.vault1Amount) : undefined)
-
 
   const loadQuoteContext = async () => {
     if (!program) throw new Error('Program not ready')
@@ -318,10 +314,6 @@ export default function DepositForm() {
     ? (netVault0UI / Math.max(netVault1UI, 1)).toFixed(4)
     : '-'
 
-  // DEBUG: Log liquidity and ratio after computation
-  console.log('[DepositForm] Computed liquidity/ratio:', { totalVault0UI, totalVault1UI, netVault0UI, netVault1UI, depositRatio, feesToken0UI, feesToken1UI })
-
-
   async function handleDeposit() {
     if (!program) {
       alert('Program not ready')
@@ -337,7 +329,6 @@ export default function DepositForm() {
 
     try {
       const programId = (program as any).programId as PublicKey
-      // Resolve token ordering: scripts sort by buffer ascending
       let t0 = token0MintParam as PublicKey | undefined
       let t1 = token1MintParam as PublicKey | undefined
       if (t0 && t1) {
@@ -349,7 +340,6 @@ export default function DepositForm() {
         }
       }
 
-      // Resolve pool PDA: prefer explicit param, else derive from provided token mints + ammConfig
       let poolAddr = poolPdaParam
       if (!poolAddr) {
         if (!t0 || !t1 || !ammConfigParam) {
@@ -360,13 +350,11 @@ export default function DepositForm() {
         poolAddr = p
       }
 
-      // derive other PDAs
       const [authority] = await getAuthAddress(programId)
       const [lpMint] = await getPoolLpMintAddress(poolAddr, programId)
       const [token0Vault] = await getPoolVaultAddress(poolAddr, t0 as PublicKey, programId)
       const [token1Vault] = await getPoolVaultAddress(poolAddr, t1 as PublicKey, programId)
 
-      // Fetch on-chain mint/vault info (base units)
       const mint0 = await getMint((program.provider as any).connection, t0!)
       const mint1 = await getMint((program.provider as any).connection, t1!)
       const lpMintAcct = await getMint((program.provider as any).connection, lpMint)
@@ -382,7 +370,6 @@ export default function DepositForm() {
       const lpSupplyFromMint = new BN(lpMintAcct.supply.toString())
       const lpSupplyFromState = new BN(poolStateAcct.lpSupply?.toString?.() ?? lpSupplyFromMint.toString())
 
-      // compute fee counters (BN) and totalVaults used by program
       const proto0 = new BN(poolStateAcct.protocolFeesToken0?.toString?.() ?? poolStateAcct.protocolFeesToken0 ?? 0)
       const fund0 = new BN(poolStateAcct.fundFeesToken0?.toString?.() ?? poolStateAcct.fundFeesToken0 ?? 0)
       const creator0 = new BN(poolStateAcct.creatorFeesToken0?.toString?.() ?? poolStateAcct.creatorFeesToken0 ?? 0)
@@ -396,7 +383,6 @@ export default function DepositForm() {
       const totalVault0 = poolVault0Amount.sub(feesToken0)
       const totalVault1 = poolVault1Amount.sub(feesToken1)
 
-      // Helper: detect token program owner (SPL v1 or token-2022)
       async function detectTokenProgram(connection: any, mint: PublicKey) {
         const info = await connection.getAccountInfo(mint)
         if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
@@ -454,7 +440,6 @@ export default function DepositForm() {
       const max0WithBuffer = applyMaxBuffer(max0, maxSlippageBps)
       const max1WithBuffer = applyMaxBuffer(max1, maxSlippageBps)
 
-      // Prepare associated addresses (use per-mint token program when computing ATA)
       const token0Program = await detectTokenProgram((program.provider as any).connection, t0!)
       const token1Program = await detectTokenProgram((program.provider as any).connection, t1!)
 
@@ -465,18 +450,17 @@ export default function DepositForm() {
       const ownerLpInfo = await (program.provider as any).connection.getAccountInfo(ownerLpToken).catch(() => null)
       const createLpAtaIx = !ownerLpInfo
         ? createAssociatedTokenAccountInstruction(
-            wallet.publicKey!,
-            ownerLpToken,
-            wallet.publicKey!,
-            lpMint,
-            lpTokenProgram,
-            ASSOCIATED_TOKEN_PROGRAM_ID
-          )
+          wallet.publicKey!,
+          ownerLpToken,
+          wallet.publicKey!,
+          lpMint,
+          lpTokenProgram,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        )
         : null
       const ownerToken0Account = getAssociatedTokenAddressSync(t0!, wallet.publicKey!, false, token0Program)
       const ownerToken1Account = getAssociatedTokenAddressSync(t1!, wallet.publicKey!, false, token1Program)
 
-      // Convert to anchor BN
       const impliedLpAnchor = new anchor.BN(impliedLp.toString())
       const max0Anchor = new anchor.BN(max0WithBuffer.toString())
       const max1Anchor = new anchor.BN(max1WithBuffer.toString())
@@ -502,22 +486,17 @@ export default function DepositForm() {
           })
           .rpc()
 
-        console.log('[DepositForm] Deposit tx successful:', tx)
         setTxResult({ sig: tx, explorer: 'https://explorer.solana.com/tx/' + tx + '?cluster=devnet' })
-        console.log('[DepositForm] About to refetch pool state...')
         await refetchPoolStateAfterTx(tx)
-        console.log('[DepositForm] Pool state refetch completed, clearing status')
         setStatus(null)
         setBusy(false)
       } catch (err: any) {
-        console.error('Transaction failed:', err)
         await showSendErrorDetails(err, wallet.publicKey ?? undefined)
         setBusy(false)
       }
 
       return
     } catch (err: any) {
-      console.error('Deposit failed', err)
       await showSendErrorDetails(err, wallet.publicKey ?? undefined)
       setBusy(false)
     }
@@ -536,17 +515,11 @@ export default function DepositForm() {
 
   const refetchPoolStateAfterTx = async (signature?: string | null) => {
     try {
-      console.log('[DepositForm] Starting pool state refresh after tx:', signature)
       if (signature) {
         await connection.confirmTransaction(signature, 'confirmed').catch(() => null)
-        console.log('[DepositForm] Transaction confirmed:', signature)
       }
-      console.log('[DepositForm] Calling refreshPoolState...')
       await refreshPoolState().catch(() => null)
-      console.log('[DepositForm] refreshPoolState completed')
-      // Follow-up refresh for RPC propagation lag.
       window.setTimeout(() => {
-        console.log('[DepositForm] Performing follow-up refresh (900ms later)')
         void refreshPoolState().catch(() => null)
       }, 900)
     } catch (e) {

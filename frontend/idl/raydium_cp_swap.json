@@ -32,7 +32,7 @@
           "name": "owner",
           "writable": true,
           "signer": true,
-          "address": "GThUX1Atko4tqhN2NaiTazWSeFWMuiUvfFnyJyUghFMJ"
+          "address": "wE2EtwuovRxvXZoThsXhRTuCrFdAA1jTbLnJp9nfezL"
         },
         {
           "name": "permission_authority"
@@ -1259,7 +1259,7 @@
             "create pool fee account"
           ],
           "writable": true,
-          "address": "DNXgeM9EiiaAbaWvwjHj9fQQLAX5ZsfHyvmYUNRAdNC8"
+          "address": "63EqUEuqiLw9ZvJJsFECg5fN7bM9hBifUEYJFGhJtuCa"
         },
         {
           "name": "observation_state",
@@ -1666,7 +1666,7 @@
             "create pool fee account"
           ],
           "writable": true,
-          "address": "DNXgeM9EiiaAbaWvwjHj9fQQLAX5ZsfHyvmYUNRAdNC8"
+          "address": "63EqUEuqiLw9ZvJJsFECg5fN7bM9hBifUEYJFGhJtuCa"
         },
         {
           "name": "observation_state",

@@ -1,6 +1,5 @@
 import { Buffer } from 'buffer'
 
-// Force the npm `buffer` Buffer onto window so full API (isBuffer, from, alloc) exists
 ;(window as any).Buffer = Buffer
 
 import { StrictMode } from 'react'

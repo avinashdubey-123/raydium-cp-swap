@@ -20,7 +20,7 @@ export default function TransactionCard({ status, title, message, explorerUrl, s
       <div className="tx-card__header">
         <div className="tx-card__status">
           <span className="tx-card__badge">{statusLabel}</span>
-          <div>
+          <div className="tx-card__text">
             <div className="tx-card__title">{title}</div>
             <div className="tx-card__message">{message}</div>
           </div>

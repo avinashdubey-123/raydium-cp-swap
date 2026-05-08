@@ -15,26 +15,26 @@ export const OPERATION_SEED = _encoder.encode("operation")
 export const ORACLE_SEED = _encoder.encode("observation")
 
 export function u16ToBytes(num: number) {
-  return new anchor.BN(num).toArrayLike(Uint8Array as any, 'le', 2)
+  return new anchor.BN(num).toArrayLike(Uint8Array as any, 'be', 2)
 }
 
 export function i16ToBytes(num: number) {
-  return new anchor.BN(num).toTwos(16).toArrayLike(Uint8Array as any, 'le', 2)
+  return new anchor.BN(num).toTwos(16).toArrayLike(Uint8Array as any, 'be', 2)
 }
 
 export function u32ToBytes(num: number) {
-  return new anchor.BN(num).toArrayLike(Uint8Array as any, 'le', 4)
+  return new anchor.BN(num).toArrayLike(Uint8Array as any, 'be', 4)
 }
 
 export function i32ToBytes(num: number) {
-  return new anchor.BN(num).toTwos(32).toArrayLike(Uint8Array as any, 'le', 4)
+  return new anchor.BN(num).toTwos(32).toArrayLike(Uint8Array as any, 'be', 4)
 }
 
 export async function getAmmConfigAddress(
   index: number,
   programId: PublicKey
 ): Promise<[PublicKey, number]> {
-  const [address, bump] = await PublicKey.findProgramAddress(
+  const [address, bump] = PublicKey.findProgramAddressSync(
     [AMM_CONFIG_SEED, u16ToBytes(index)],
     programId
   );
@@ -44,7 +44,7 @@ export async function getAmmConfigAddress(
 export async function getAuthAddress(
   programId: PublicKey
 ): Promise<[PublicKey, number]> {
-  const [address, bump] = await PublicKey.findProgramAddress(
+  const [address, bump] = PublicKey.findProgramAddressSync(
     [POOL_AUTH_SEED],
     programId
   );
@@ -57,7 +57,7 @@ export async function getPoolAddress(
   tokenMint1: PublicKey,
   programId: PublicKey
 ): Promise<[PublicKey, number]> {
-  const [address, bump] = await PublicKey.findProgramAddress(
+  const [address, bump] = PublicKey.findProgramAddressSync(
     [
       POOL_SEED,
       ammConfig.toBytes(),
@@ -74,7 +74,7 @@ export async function getPoolVaultAddress(
   vaultTokenMint: PublicKey,
   programId: PublicKey
 ): Promise<[PublicKey, number]> {
-  const [address, bump] = await PublicKey.findProgramAddress(
+  const [address, bump] = PublicKey.findProgramAddressSync(
     [POOL_VAULT_SEED, pool.toBytes(), vaultTokenMint.toBytes()],
     programId
   );
@@ -85,7 +85,7 @@ export async function getPoolLpMintAddress(
   pool: PublicKey,
   programId: PublicKey
 ): Promise<[PublicKey, number]> {
-  const [address, bump] = await PublicKey.findProgramAddress(
+  const [address, bump] = PublicKey.findProgramAddressSync(
     [POOL_LPMINT_SEED, pool.toBytes()],
     programId
   );
@@ -96,8 +96,19 @@ export async function getOrcleAccountAddress(
   pool: PublicKey,
   programId: PublicKey
 ): Promise<[PublicKey, number]> {
-  const [address, bump] = await PublicKey.findProgramAddress(
+  const [address, bump] = PublicKey.findProgramAddressSync(
     [ORACLE_SEED, pool.toBytes()],
+    programId
+  );
+  return [address, bump];
+}
+
+export async function getPermissionPdaAddress(
+  user: PublicKey,
+  programId: PublicKey
+): Promise<[PublicKey, number]> {
+  const [address, bump] = PublicKey.findProgramAddressSync(
+    [_encoder.encode("permission"), user.toBytes()],
     programId
   );
   return [address, bump];

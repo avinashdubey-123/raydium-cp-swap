@@ -3,16 +3,12 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 24px 16px;
-  background:
-    radial-gradient(90% 80% at 50% -10%, rgba(41, 69, 126, 0.38) 0%, rgba(6, 12, 24, 0) 58%),
-    linear-gradient(180deg, #050913 0%, #03070f 100%);
+  padding: 112px 40px;
 }
 
 .withdraw-page--embedded {
   min-height: auto;
   width: 100%;
-  padding: 0;
   background: transparent;
 }
 
@@ -141,15 +137,20 @@
 }
 
 .withdraw-slider {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
+  height: 6px;
+  border-radius: 999px;
   margin: 10px 0 8px;
-  accent-color: #27cbff;
+  cursor: pointer;
+  outline: none;
 }
 
 .withdraw-slider::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #2b9cff, #6ee7ff);
+  background: transparent;
 }
 
 .withdraw-slider::-webkit-slider-thumb {
@@ -167,7 +168,7 @@
 .withdraw-slider::-moz-range-track {
   height: 6px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #2b9cff, #6ee7ff);
+  background: transparent;
 }
 
 .withdraw-slider::-moz-range-thumb {
@@ -186,19 +187,25 @@
 }
 
 .withdraw-quick-actions button {
-  border: 1px solid #2a4268;
-  background: #15284a;
-  color: #a9c3e1;
+  border: 1px solid var(--btn-outline-border);
+  background: var(--btn-outline-bg);
+  color: var(--btn-outline-text);
   border-radius: 10px;
   padding: 4px 8px;
   cursor: pointer;
   font-weight: 600;
   font-size: 11px;
+  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
 }
 
 .withdraw-quick-actions button:hover {
-  border-color: #32d1ff;
-  color: #d8f3ff;
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
+}
+
+.withdraw-quick-actions button:active {
+  background: var(--btn-outline-active-bg);
+  border-color: var(--btn-outline-active-border);
 }
 
 .withdraw-keep-open {
@@ -242,11 +249,19 @@
   margin-top: 14px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(90deg, #45d3ff, #2fb8f0);
-  color: #052337;
+  background: linear-gradient(90deg, var(--btn-solid-bg) 0%, #2fb8f0 100%);
+  color: var(--btn-solid-text);
   font-weight: 700;
   padding: 10px;
   cursor: pointer;
+}
+
+.withdraw-confirm:hover:not(:disabled) {
+  background: linear-gradient(90deg, var(--btn-solid-hover-bg) 0%, #44c9f7 100%);
+}
+
+.withdraw-confirm:active:not(:disabled) {
+  background: linear-gradient(90deg, var(--btn-solid-active-bg) 0%, #279fcf 100%);
 }
 
 .withdraw-confirm:disabled {

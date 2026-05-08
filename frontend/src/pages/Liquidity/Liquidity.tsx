@@ -10,16 +10,12 @@ import { getPoolAddress, getPoolVaultAddress } from '../../utils/pda'
 import { useEffect, useState, useRef } from 'react'
 import copyIcon from '../../assets/copy.svg'
 
-// Program id used to derive PDAs for pools (matches scripts/instructions/deposit.ts)
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
 
-// We'll load pools from on-chain `poolState` accounts instead of hardcoded POOLS.
 
 function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
-  // If pool provides token/amm info, fetch on-chain values via usePool
   const token0 = pool.token0 ? new PublicKey(pool.token0) : undefined
   const token1 = pool.token1 ? new PublicKey(pool.token1) : undefined
-  // Ensure token ordering matches on-chain creation: ascending by raw bytes (matching scripts)
   let sortedToken0 = token0
   let sortedToken1 = token1
   if (token0 && token1) {
@@ -32,19 +28,14 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
   const ammConfig = pool.ammConfig ? new PublicKey(pool.ammConfig) : undefined
   const poolPda = pool.poolPda ? new PublicKey(pool.poolPda) : undefined
 
-  // Avoid per-row on-mount RPC fetches here — Liquidity batches vault RPCs itself.
-  const { vault0Amount: hookVault0, vault1Amount: hookVault1, decimals0: hookDecimals0, decimals1: hookDecimals1, loading, error } = usePool({ poolPda, ammConfig, token0Mint: sortedToken0, token1Mint: sortedToken1, fetchOnMount: false })
+  const { vault0Amount: hookVault0, vault1Amount: hookVault1 } = usePool({ poolPda, ammConfig, token0Mint: sortedToken0, token1Mint: sortedToken1, fetchOnMount: false })
   const { connection } = useConnection()
   const [rpcVault0, setRpcVault0] = useState<number | null>(null)
   const [rpcVault1, setRpcVault1] = useState<number | null>(null)
-  const [rpcLoading, setRpcLoading] = useState(false)
-  const [rpcError, setRpcError] = useState<string | null>(null)
 
-  // Fetch vault token balances via RPC (works without wallet/program). Prefer hook values when available.
   useEffect(() => {
     let mounted = true
     async function fetchVaults() {
-      // if parent loader already populated balances, use them and skip per-row RPC
       if (pool.vault0Balance != null || pool.vault1Balance != null) {
         if (mounted) {
           setRpcVault0(pool.vault0Balance ?? null)
@@ -53,8 +44,6 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
         return
       }
       if (!token0 || !token1 || !ammConfig) return
-      setRpcLoading(true)
-      setRpcError(null)
       try {
         const [pda] = await getPoolAddress(ammConfig, sortedToken0!, sortedToken1!, PROGRAM_ID)
         const [v0] = await getPoolVaultAddress(pda, sortedToken0!, PROGRAM_ID)
@@ -65,43 +54,23 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
         setRpcVault0(b0?.value?.uiAmount ?? null)
         setRpcVault1(b1?.value?.uiAmount ?? null)
       } catch (err: any) {
-        if (mounted) setRpcError(err?.message || String(err))
-      } finally {
-        if (mounted) setRpcLoading(false)
+        console.log(err)
       }
     }
     fetchVaults()
     return () => { mounted = false }
   }, [token0, token1, ammConfig, connection, pool.vault0Balance, pool.vault1Balance])
 
-  // Derived display values and actions for the row
   const shortPoolId = pool.poolPda ? `${String(pool.poolPda).slice(0, 4)}...${String(pool.poolPda).slice(-4)}` : null
   const displayName = shortPoolId ? shortPoolId : (sortedToken0 && sortedToken1 ? `${sortedToken0.toBase58().slice(0,6)} / ${sortedToken1.toBase58().slice(0,6)}` : 'Unknown')
   const [pairHash] = useState<string | null>(null)
   const vault0 = hookVault0 ?? rpcVault0 ?? pool.vault0Balance
   const vault1 = hookVault1 ?? rpcVault1 ?? pool.vault1Balance
-  const toNumberSafe = (v: any) => {
-    if (v == null) return 0
-    if (typeof v === 'number') return v
-    if (typeof v === 'string') return Number(v)
-    if (v?.toNumber) return v.toNumber()
-    if (v?.toString) return Number(v.toString())
-    return 0
-  }
-  const decimals0 = pool.raw?.mint_0_decimals ?? pool.raw?.mint0Decimals ?? hookDecimals0 ?? pool.decimals0 ?? 0
-  const decimals1 = pool.raw?.mint_1_decimals ?? pool.raw?.mint1Decimals ?? hookDecimals1 ?? pool.decimals1 ?? 0
-  const feesToken0UI = pool.raw
-    ? (toNumberSafe(pool.raw.protocolFeesToken0) + toNumberSafe(pool.raw.fundFeesToken0) + toNumberSafe(pool.raw.creatorFeesToken0)) / Math.pow(10, decimals0)
-    : 0
-  const feesToken1UI = pool.raw
-    ? (toNumberSafe(pool.raw.protocolFeesToken1) + toNumberSafe(pool.raw.fundFeesToken1) + toNumberSafe(pool.raw.creatorFeesToken1)) / Math.pow(10, decimals1)
-    : 0
   const volume24h = pool.volume24h ?? '-'
   const liquidityDisplay = (vault0 != null && vault1 != null) ? `${vault0} / ${vault1}` : volume24h
   const fees24h = pool.fees24h ?? '-'
   const apr = pool.apr ?? '-'
 
-  // Hover card state: shows pool id + token mints while hovering
   const [hoverInfo, setHoverInfo] = useState<{ poolId?: string | null; token0?: string | null; token1?: string | null } | null>(null)
   const hoverTimeout = useRef<number | null>(null)
   const clearHoverTimeout = () => {
@@ -150,7 +119,6 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
       lpSupply: pool.lpSupply,
       decimals0: pool.raw?.mint_0_decimals ?? pool.raw?.mint0Decimals ?? pool.decimals0,
       decimals1: pool.raw?.mint_1_decimals ?? pool.raw?.mint1Decimals ?? pool.decimals1,
-      // include pre-fetched vault balances (if available) to avoid extra RPC in Deposit
       vault0Amount: (pool.vault0Balance ?? pool.vault0Balance === 0) ? pool.vault0Balance : undefined,
       vault1Amount: (pool.vault1Balance ?? pool.vault1Balance === 0) ? pool.vault1Balance : undefined,
     }
@@ -159,9 +127,6 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
 
   return (
     <tr key={displayName} className="lp-row">
-      <td className="lp-td lp-td-loading lp-col-loading">
-        {loading || rpcLoading ? <span className="lp-loading">⏳</span> : (error || rpcError) ? <span title={(error || rpcError) as string}>⚠️</span> : null}
-      </td>
       <td className="lp-td lp-td-pool lp-col-pool">
         <div className="lp-td-pool-inner">
           <div className="lp-hover-wrapper" onMouseEnter={() => { void handleIconHover() }} onMouseLeave={handleIconLeave} style={{ display: 'inline-block' }}>
@@ -194,7 +159,6 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
           </div>
           <div className="lp-pool-info">
             <span className="lp-pool-name">{displayName}</span>
-            <span className="lp-pool-fee">{pool.fee}</span>
             {pairHash && <div className="lp-pair-hash">Pair: {pairHash}</div>}
           </div>
         </div>
@@ -221,7 +185,6 @@ const Liquidity = () => {
   const [loadingPools, setLoadingPools] = useState(false)
   const [poolsError, setPoolsError] = useState<string | null>(null)
 
-  // fetch all poolState accounts using Anchor program when available
   useEffect(() => {
     let mounted = true
     async function loadPools() {
@@ -238,31 +201,25 @@ const Liquidity = () => {
           attempt++
           try {
             if (program) {
-              // use Anchor to decode account data
               const all = await (program.account as any).poolState.all()
               accounts = all.map((a: any) => ({ pubkey: a.publicKey, account: a.account }))
             } else {
-              // fallback: fetch raw accounts via RPC and try to decode using IDL coder
               const raw = await connection.getProgramAccounts(PROGRAM_ID)
               const coder = new anchor.BorshAccountsCoder(idlJson as any)
               accounts = []
               for (const r of raw) {
-                // r.account.data is [base64, 'base64']
                 const data = r.account.data
                 let decoded: any = null
                 try {
                   const buf = Buffer.from((data as any)[0], 'base64')
-                  // try common account name variants
                   try { decoded = coder.decode('poolState', buf) } catch (e) {}
                   if (!decoded) try { decoded = coder.decode('pool_state', buf) } catch (e) {}
                   if (!decoded) {
-                    // as last resort, leave raw account
                     accounts.push({ pubkey: r.pubkey, account: r.account })
                     continue
                   }
                   accounts.push({ pubkey: r.pubkey, account: decoded })
                 } catch (err) {
-                  // push raw account if decoding fails
                   accounts.push({ pubkey: r.pubkey, account: r.account })
                 }
               }
@@ -283,7 +240,6 @@ const Liquidity = () => {
         }
         if (lastErr) throw lastErr
 
-        // Normalize accounts and batch-fetch vault balances to avoid per-row RPC storms
         const mapped: any[] = []
         const vaultPubkeys: string[] = []
 
@@ -326,7 +282,6 @@ const Liquidity = () => {
           }
         }
 
-        // Batch fetch balances with limited concurrency + retry/backoff
         const uniqueVaults = Array.from(new Set(vaultPubkeys))
         const fetchBalancesBatched = async (pubs: string[], concurrency = 2) => {
           const results = new Map<string, number | null>()
@@ -334,7 +289,6 @@ const Liquidity = () => {
           const worker = async () => {
             while (queue.length) {
               const p = queue.shift()!
-              // small spacing between requests to reduce burst pressure
               await new Promise((r) => setTimeout(r, 120 + Math.round(Math.random() * 80)))
               let attempts = 0
               while (attempts < 8) {
@@ -372,7 +326,6 @@ const Liquidity = () => {
     }
     loadPools()
 
-    // subscribe to program account changes to refresh
     let subId: number | null = null
     try {
       subId = connection.onProgramAccountChange(PROGRAM_ID, async () => {
@@ -388,7 +341,6 @@ const Liquidity = () => {
 
   return (
     <div className="lp-page">
-      {/* ── Page header ── */}
       <div className="lp-top">
         <div className="lp-top-left">
           <h1 className="lp-title">Liquidity Pools</h1>
@@ -407,27 +359,31 @@ const Liquidity = () => {
         </div>
       </div>
 
-      {/* ── Filter bar ── */}
       <div className="lp-filter-bar">
+        <div className="lp-filter-left">
+          <input className="lp-search" placeholder="Search pool" />
+        </div>
+        
         <div className="lp-filters">
-          <button className="lp-filter">All</button>
+          <button className="lp-filter active">All</button>
           <button className="lp-filter">Standard</button>
           <button className="lp-filter">Stables</button>
         </div>
+
         <div className="lp-filter-right">
-          <input className="lp-search" placeholder="Search pool" />
           <button className="lp-create-btn" onClick={() => navigate('/liquidity/create')}>
             + Create
+          </button>
+          <button className="lp-create-btn lp-create-fees-btn" onClick={() => navigate('/liquidity/create', { state: { mode: 'permissioned' } })}>
+            + Create (with creator fees)
           </button>
         </div>
       </div>
 
-      {/* ── Pool table ── */}
       <div className="lp-table-wrap">
         <table className="lp-table">
           <thead>
             <tr>
-              <th className="lp-th lp-col-loading"></th>
               <th className="lp-th lp-th-pool lp-col-pool">Pool</th>
               <th className="lp-th lp-col-liquidity">Liquidity (token0/token1)</th>
               <th className="lp-th lp-col-volume">Volume 24H</th>

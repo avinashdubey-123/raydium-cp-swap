@@ -7,11 +7,9 @@ import {
   PublicKey,
   SendTransactionError,
   SystemProgram,
-  SYSVAR_RENT_PUBKEY,
-  Transaction,
+  SYSVAR_RENT_PUBKEY
 } from "@solana/web3.js";
 import {
-  createAssociatedTokenAccountIdempotentInstruction,
   getAccount,
   getAssociatedTokenAddressSync,
   NATIVE_MINT,

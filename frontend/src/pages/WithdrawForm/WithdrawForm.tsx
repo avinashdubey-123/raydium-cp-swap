@@ -355,6 +355,9 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                         value={percent}
                         onChange={(e) => setPercent(Number(e.target.value))}
                         aria-label="Withdraw percentage"
+                        style={{
+                            background: `linear-gradient(to right, #36c7ff 0%, #36c7ff ${percent}%, #1d2a47 ${percent}%, #1d2a47 100%)`
+                        }}
                     />
 
                     <div className="withdraw-quick-actions">

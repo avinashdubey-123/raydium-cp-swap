@@ -24,6 +24,7 @@ import { CurveCalculator } from '../../utils/curve/calculator'
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import idlJson from '../../../idl/raydium_cp_swap.json'
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
 
@@ -58,12 +59,11 @@ export default function Swap() {
   const location = useLocation()
   const navigate = useNavigate()
   const rawState = (location.state as any) || {}
-  const poolFromRoute = (rawState as Pool) || null
+  const poolFromRoute = rawState?.poolPda ? (rawState as Pool) : null
   const program = useProgram()
   const wallet = useWallet()
   const { connection } = useConnection()
 
-  // Pool loading state - clean structure
   const [allPools, setAllPools] = useState<PoolData[]>([])
   const [loadingPools, setLoadingPools] = useState(false)
   const [poolsError, setPoolsError] = useState<string | null>(null)
@@ -101,10 +101,8 @@ export default function Swap() {
     return ata
   }
 
-  // Load all available pools on mount
   useEffect(() => {
     let mounted = true
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
     async function loadPoolsWithRetry() {
       setLoadingPools(true)
@@ -113,38 +111,32 @@ export default function Swap() {
       let attempt = 0
       let lastErr: any = null
 
-      // simple cache key based on RPC endpoint if available
       const endpoint = (connection as any)?.rpcEndpoint || (connection as any)?._rpcEndpoint || ''
       const cacheEntry = POOLS_CACHE.get(endpoint)
-      const cacheTtl = 60 * 1000 // 60s
+      const cacheTtl = 60 * 1000
       if (cacheEntry && Date.now() - cacheEntry.ts < cacheTtl) {
         if (mounted) {
           setAllPools(cacheEntry.pools)
-          if (cacheEntry.pools.length > 0 && !poolFromRoute) setSelectedPool(cacheEntry.pools[0])
           setLoadingPools(false)
         }
         return
       }
 
-      // single-flight: reuse existing promise if another fetch in progress for same endpoint
       if (POOLS_PROMISE.has(endpoint)) {
         try {
           const res = await POOLS_PROMISE.get(endpoint)
           if (mounted) {
             setAllPools(res)
-            if (res.length > 0 && !poolFromRoute) setSelectedPool(res[0])
             setLoadingPools(false)
           }
           return
         } catch (e) {
-          // fallthrough to fetching below
         }
       }
 
       while (attempt < maxAttempts && mounted) {
         attempt++
         try {
-          // register promise before heavy RPC work
           const work = (async () => {
             let accounts: Array<any> = []
             if (program) {
@@ -157,10 +149,9 @@ export default function Swap() {
               for (const r of raw) {
                 let decoded: any = null
                 try {
-                  // Try to decode - data might be Buffer or Uint8Array
                   const data = r.account.data as any
                   let buf: Buffer
-                  
+
                   if (Buffer.isBuffer(data)) {
                     buf = data
                   } else if (data instanceof Uint8Array) {
@@ -168,13 +159,11 @@ export default function Swap() {
                   } else if (typeof data === 'string') {
                     buf = Buffer.from(data, 'base64')
                   } else if (Array.isArray(data) && (data as any).length > 0) {
-                    // Sometimes data comes as [base64String, encoding]
                     buf = Buffer.from((data as any)[0], 'base64')
                   } else {
                     continue
                   }
 
-                  // Try decoding with different type names
                   try { decoded = coder.decode('poolState', buf) } catch (e1) {
                     try { decoded = coder.decode('pool_state', buf) } catch (e2) {
                       try { decoded = coder.decode('PoolState', buf) } catch (e3) { decoded = null }
@@ -184,7 +173,7 @@ export default function Swap() {
                   if (decoded) {
                     accounts.push({ pubkey: r.pubkey, account: decoded })
                   }
-                } catch (err: any) {}
+                } catch (err: any) { }
               }
             }
 
@@ -200,17 +189,17 @@ export default function Swap() {
               try {
                 const acc = a.account
                 const poolPda = a.pubkey ? (a.pubkey.toBase58 ? a.pubkey.toBase58() : String(a.pubkey)) : null
-                
+
                 if (!poolPda) continue
 
                 const token0 = toPubString(
-                  acc.token_0_mint ?? acc.token0Mint ?? acc.mint_0 ?? acc.mint0 ?? 
-                  acc.mint_0_mint ?? acc.mint_0_pubkey ?? acc.token0_mint ?? acc.tokenMint0 ?? 
+                  acc.token_0_mint ?? acc.token0Mint ?? acc.mint_0 ?? acc.mint0 ??
+                  acc.mint_0_mint ?? acc.mint_0_pubkey ?? acc.token0_mint ?? acc.tokenMint0 ??
                   acc.mintA ?? acc.mint_a
                 )
                 const token1 = toPubString(
-                  acc.token_1_mint ?? acc.token1Mint ?? acc.mint_1 ?? acc.mint1 ?? 
-                  acc.mint_1_mint ?? acc.mint_1_pubkey ?? acc.token1_mint ?? acc.tokenMint1 ?? 
+                  acc.token_1_mint ?? acc.token1Mint ?? acc.mint_1 ?? acc.mint1 ??
+                  acc.mint_1_mint ?? acc.mint_1_pubkey ?? acc.token1_mint ?? acc.tokenMint1 ??
                   acc.mintB ?? acc.mint_b
                 )
                 const ammConfig = toPubString(
@@ -229,8 +218,7 @@ export default function Swap() {
               }
             }
 
-            // cache result
-            try { POOLS_CACHE.set(endpoint, { ts: Date.now(), pools: mapped }) } catch (e) {}
+            try { POOLS_CACHE.set(endpoint, { ts: Date.now(), pools: mapped }) } catch (e) { }
             return mapped
           })()
           POOLS_PROMISE.set(endpoint, work)
@@ -239,22 +227,18 @@ export default function Swap() {
 
           if (mounted) {
             setAllPools(mapped)
-            if (mapped.length > 0 && !poolFromRoute) setSelectedPool(mapped[0])
           }
-          // success
           lastErr = null
           break
         } catch (err: any) {
           lastErr = err
           console.error('Error loading pools (attempt', attempt, '):', err)
           const msg = (err?.message || String(err) || '').toLowerCase()
-          // if rate limited, back off and retry
           if (msg.includes('429') || msg.includes('too many requests')) {
             const backoff = Math.min(1000 * Math.pow(2, attempt - 1), 8000) + Math.round(Math.random() * 300)
             await sleep(backoff)
             continue
           }
-          // otherwise break and show error
           break
         }
       }
@@ -269,9 +253,8 @@ export default function Swap() {
     return () => { mounted = false }
   }, [program, connection, poolFromRoute, poolsReloadKey])
 
-  // Build memoized parameters for swap operations
   const activePool = selectedPool || poolFromRoute
-  
+
   const poolPdaParam = useMemo(() => {
     if (!activePool?.poolPda) return undefined
     try {
@@ -350,7 +333,6 @@ export default function Swap() {
     return `${v.slice(0, 4)}...${v.slice(-4)}`
   }
 
-  // Display values - extracted directly from clean pool structure
   const poolIdStr = activePool?.poolPda
   const token0Str = activePool?.token0
   const token1Str = activePool?.token1
@@ -361,8 +343,10 @@ export default function Swap() {
     if (token0Str && token1Str) {
       return `${shorten(token0Str)} / ${shorten(token1Str)}`
     }
-    return shorten(poolIdStr)
+    return poolIdStr ? shorten(poolIdStr) : 'Select Pool'
   }
+
+
 
   const getPoolSelectorLabel = () => {
     if (loadingPools) return 'Loading pools...'
@@ -473,12 +457,12 @@ export default function Swap() {
 
     const creatorFeeOn = Number(poolStateAcct.creatorFeeOn ?? poolStateAcct.creator_fee_on ?? 0)
 
-    return { 
-      t0: t0!, 
-      t1: t1!, 
-      mint0, 
-      mint1, 
-      totalVault0, 
+    return {
+      t0: t0!,
+      t1: t1!,
+      mint0,
+      mint1,
+      totalVault0,
       totalVault1,
       tradeFeeRate,
       creatorFeeRate,
@@ -500,12 +484,12 @@ export default function Swap() {
   const swapToken0ForToken1 = async (inputToken0Human: string) => {
     const ctx = await loadSwapContext()
     const inputToken0Base = parseHumanAmountToBaseUnits(inputToken0Human, Number(ctx.mint0.decimals ?? 0))
-    
+
     const fee0bn = await computeTransferFeeForPre(((program as any).provider as any).connection, ctx.t0, inputToken0Base)
     const postToken0 = inputToken0Base.sub(fee0bn)
 
-    const isCreatorFeeOnInput = ctx.creatorFeeOn === 0 || (ctx.creatorFeeOn === 1 && true) // token0 is input
-    
+    const isCreatorFeeOnInput = ctx.creatorFeeOn === 0 || (ctx.creatorFeeOn === 1 && true)
+
     const result = CurveCalculator.swapBaseInput(
       postToken0,
       ctx.totalVault0,
@@ -600,15 +584,8 @@ export default function Swap() {
       await ensureAssociatedTokenAccount(payer, payer, ctx.t0, ctx.inputTokenProgram)
       await ensureAssociatedTokenAccount(payer, payer, ctx.t1, ctx.outputTokenProgram)
 
-      const ammConfigAcct: any = await (program.account as any).ammConfig.fetch(ammConfigAccount as PublicKey)
-      const tradeFeeRate = new BN(ammConfigAcct.tradeFeeRate?.toString?.() ?? ammConfigAcct.trade_fee_rate ?? 0)
-      const creatorFeeRate = new BN(ammConfigAcct.creatorFeeRate?.toString?.() ?? ammConfigAcct.creator_fee_rate ?? 0)
-      const protocolFeeRate = new BN(ammConfigAcct.protocolFeeRate?.toString?.() ?? ammConfigAcct.protocol_fee_rate ?? 0)
-      const fundFeeRate = new BN(ammConfigAcct.fundFeeRate?.toString?.() ?? ammConfigAcct.fund_fee_rate ?? 0)
-      const creatorFeeOn = Number(ctx.poolStateAcct.creatorFeeOn ?? ctx.poolStateAcct.creator_fee_on ?? 0)
 
       if (lastEditedField === 'token0') {
-        // User entering token0 amount, receiving token1 amount
         const inputToken0Human = Number(amountIn || '0')
         if (inputToken0Human <= 0) {
           alert('Enter valid Token0 amount for swap')
@@ -617,7 +594,7 @@ export default function Swap() {
 
         const inputToken0Base = parseHumanAmountToBaseUnits(amountIn, Number(ctx.mint0.decimals ?? 0))
         const uiExpectedOutBase = parseHumanAmountToBaseUnits(amountOut, Number(ctx.mint1.decimals ?? 0))
-        const minOutToken1 = uiExpectedOutBase.mul(new BN(99)).div(new BN(100)) // 1% slippage
+        const minOutToken1 = uiExpectedOutBase.mul(new BN(99)).div(new BN(100))
 
         try {
           const tx = await (program as any).methods
@@ -640,7 +617,7 @@ export default function Swap() {
             .rpc()
 
           setTxResult({ sig: tx, explorer: 'https://explorer.solana.com/tx/' + tx + '?cluster=devnet' })
-          
+
           await connection.confirmTransaction(tx, 'confirmed').catch(() => null)
           await loadPrices()
           setStatus(null)
@@ -653,19 +630,15 @@ export default function Swap() {
           setBusy(false)
         }
       } else {
-        // User entering desired token1 amount, required token0 input is calculated via exact-out math
         const desiredToken1Human = Number(amountOut || '0')
         if (desiredToken1Human <= 0) {
           alert('Enter valid Token1 amount to receive')
           return
         }
 
-        const desiredToken1Base = parseHumanAmountToBaseUnits(amountOut, Number(ctx.mint1.decimals ?? 0))
-        const invOut = await computeInverseTransferFee((program.provider as any).connection, ctx.t1, desiredToken1Base)
-        const preTransferOutput = invOut.transferAmount
-
+        const desiredToken1Base = parseHumanAmountToBaseUnits(amountOut, Number(ctx.mint1.decimals ?? 0))      
         const uiExpectedInBase = parseHumanAmountToBaseUnits(amountIn, Number(ctx.mint0.decimals ?? 0))
-        const maxInputPreFee = uiExpectedInBase.mul(new BN(101)).div(new BN(100)) // 1% slippage
+        const maxInputPreFee = uiExpectedInBase.mul(new BN(101)).div(new BN(100))
 
         try {
           const tx = await (program as any).methods
@@ -688,23 +661,19 @@ export default function Swap() {
             .rpc()
 
           setTxResult({ sig: tx, explorer: 'https://explorer.solana.com/tx/' + tx + '?cluster=devnet' })
-          
+
           await connection.confirmTransaction(tx, 'confirmed').catch(() => null)
           await loadPrices()
           setStatus(null)
           setBusy(false)
         } catch (err: any) {
           if (!isAlreadyProcessedError(err)) {
-            console.error('Swap transaction failed:', err)
           }
           await showSendErrorDetails(err, wallet.publicKey ?? undefined)
           setBusy(false)
         }
       }
     } catch (err: any) {
-      if (!isAlreadyProcessedError(err)) {
-        console.error('Swap failed', err)
-      }
       await showSendErrorDetails(err, wallet.publicKey ?? undefined)
       setBusy(false)
     }
@@ -799,14 +768,14 @@ export default function Swap() {
                 <div className="swap-pool-selector-wrapper">
                   <label className="swap-pool-label">Select Pool:</label>
                   <div className="swap-pool-selector-container">
-                    <button 
+                    <button
                       className="swap-pool-selector-btn"
                       onClick={() => setShowPoolSelector(!showPoolSelector)}
                     >
                       <span className="swap-pool-selected">{getPoolSelectorLabel()}</span>
                       <span className="swap-pool-selector-arrow">{showPoolSelector ? '▲' : '▼'}</span>
                     </button>
-                    
+
                     {showPoolSelector && (
                       <div className="swap-pool-dropdown">
                         {loadingPools ? (
@@ -930,7 +899,6 @@ export default function Swap() {
                             try {
                               setAmountOut(await swapToken0ForToken1(next))
                             } catch (err) {
-                              console.error('Quote error:', err)
                               setAmountOut('')
                             }
                           }}
@@ -959,7 +927,6 @@ export default function Swap() {
                             try {
                               setAmountIn(await quoteToken0ForToken1ExactOut(next))
                             } catch (err) {
-                              console.error('Quote error:', err)
                               setAmountIn('')
                             }
                           }}

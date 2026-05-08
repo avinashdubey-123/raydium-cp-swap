@@ -45,8 +45,6 @@ export class CpmmFee {
     }
 }
 
-// Compute the pre-fee transfer amount and fee for Token-2022 mints.
-// Returns an object with `transferAmount` (pre-fee) and `transferFee` (difference).
 export async function computeInverseTransferFee(
     connection: Connection,
     mintPubkey: PublicKey,
@@ -57,7 +55,6 @@ export async function computeInverseTransferFee(
         return { transferAmount: postFeeAmount, transferFee: new BN(0) };
     }
 
-    // If not Token-2022 owned, conservatively assume no transfer fee
     if (!acct.owner.equals(TOKEN_2022_PROGRAM_ID)) {
         return { transferAmount: postFeeAmount, transferFee: new BN(0) };
     }
@@ -67,13 +64,9 @@ export async function computeInverseTransferFee(
     try {
         mintObj = await getMint(connection, mintPubkey, "processed", TOKEN_2022_PROGRAM_ID);
     } catch (e) {
-        // Fallback: can't parse mint; assume no fee
         return { transferAmount: postFeeAmount, transferFee: new BN(0) };
     }
 
-    // Attempt to locate the transfer fee config inside the returned mint object.
-    // Prefer the canonical `transferFeeConfig` shape used by token-2022:
-    // { newerTransferFee, olderTransferFee, transferFeeConfigAuthority, ... }
     const tfc =
         (mintObj as any).transferFeeConfig || (mintObj as any).extensions?.transferFeeConfig || (mintObj as any).transferFee;
 
@@ -81,7 +74,6 @@ export async function computeInverseTransferFee(
         return { transferAmount: postFeeAmount, transferFee: new BN(0) };
     }
 
-    // Extract conservative bounds from both newer and older entries when present.
     const newer = (tfc.newerTransferFee ?? tfc.newer ?? null) as any;
     const older = (tfc.olderTransferFee ?? tfc.older ?? null) as any;
 
@@ -93,26 +85,22 @@ export async function computeInverseTransferFee(
     const olderMax = BigInt(older?.maximumFee ?? older?.MaxFee ?? 0n);
     const maxFee: bigint = newerMax > olderMax ? newerMax : olderMax;
 
-    // Prefer newer.epoch when available, otherwise default to 0.
     const epoch: bigint = BigInt(newer?.epoch ?? older?.epoch ?? 0n);
 
     // Binary search for pre such that pre - calculateEpochFee(cfg, epoch, pre) == post
     // Initial bounds: low = post, high = post + conservative estimate
     const postBig = BigInt(postFeeAmount.toString());
 
-    // conservative multiplier: if basisPoints is 0 use +maxFee, else scale by ratio
     let highBig: bigint;
     if (basisPoints === 0) {
         highBig = postBig + maxFee + 2n;
     } else {
-        // pre ~= post / (1 - bps/10000) => multiply by 10000/(10000-bps)
         const denom = BigInt(10000 - basisPoints);
         highBig = (postBig * 10000n + denom - 1n) / denom + 2n;
     }
 
     let lowBig = postBig;
 
-    // clamp high to at least low+1
     if (highBig <= lowBig) highBig = lowBig + 1n;
 
     // binary search loop
@@ -125,7 +113,6 @@ export async function computeInverseTransferFee(
         try {
             feeBig = BigInt(calculateEpochFee(tfc, epoch, mid));
         } catch (err) {
-            // If calculateEpochFee throws, abort and fallback to simple formula
             feeBig = 0n;
         }
 
@@ -135,17 +122,14 @@ export async function computeInverseTransferFee(
             break;
         }
         if (postCandidate < postBig) {
-            // need larger pre
             lowBig = mid + 1n;
         } else {
-            // postCandidate > desired => reduce pre
             if (mid === 0n) break;
             highBig = mid - 1n;
         }
     }
 
     if (foundPre === null) {
-        // best-effort: take lowBig as pre and compute fee
         foundPre = lowBig;
     }
 

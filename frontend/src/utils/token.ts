@@ -7,7 +7,6 @@ export async function findAssociatedTokenAddress(owner: PublicKey, mint: PublicK
 
 export async function getTokenBalance(connection: Connection, tokenAccount: PublicKey): Promise<number> {
   const res = await connection.getTokenAccountBalance(tokenAccount)
-  // returns amount as string of ui amount * 10^decimals; caller should adjust by decimals
   return Number(res.value.amount)
 }
 

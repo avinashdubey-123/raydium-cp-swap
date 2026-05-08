@@ -1,0 +1,244 @@
+.creator-fees-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 112px 18px 80px;
+  min-height: 100vh;
+  color: #d5e3ff;
+}
+
+.creator-fees-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.creator-fees-kicker {
+  color: #7f94b6;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.creator-fees-hero h1 {
+  margin: 6px 0 8px;
+  font-size: 30px;
+  color: #8fe0ff;
+}
+
+.creator-fees-hero p {
+  margin: 0;
+  max-width: 720px;
+  color: #8fa4c5;
+  line-height: 1.55;
+}
+
+.creator-fees-hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.creator-fees-primary,
+.creator-fees-secondary {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
+}
+
+.creator-fees-primary {
+  background: linear-gradient(135deg, var(--btn-solid-bg) 0%, #5c8dff 100%);
+  color: var(--btn-solid-text);
+}
+
+.creator-fees-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.creator-fees-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--btn-solid-hover-bg) 0%, #66a0ff 100%);
+}
+
+.creator-fees-primary:active:not(:disabled) {
+  background: linear-gradient(135deg, var(--btn-solid-active-bg) 0%, #4d7ac4 100%);
+}
+
+.creator-fees-secondary {
+  background: var(--btn-outline-bg);
+  color: #c0d6f7;
+  border-color: #22324f;
+}
+
+.creator-fees-secondary:hover:not(:disabled) {
+  background: var(--btn-outline-hover-bg);
+  border-color: var(--btn-outline-hover-border);
+}
+
+.creator-fees-secondary:active:not(:disabled) {
+  background: var(--btn-outline-active-bg);
+  border-color: var(--btn-outline-active-border);
+}
+
+.creator-fees-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.creator-fees-stat,
+.creator-fees-panel {
+  background: #111a2d;
+  border: 1px solid #22314b;
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(2, 6, 14, 0.4);
+}
+
+.creator-fees-stat {
+  padding: 16px 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.creator-fees-stat span,
+.creator-fees-panel-head span,
+.creator-fees-meta {
+  color: #8397b7;
+  font-size: 12px;
+}
+
+.creator-fees-stat strong {
+  font-size: 20px;
+  color: #f2f7ff;
+}
+
+.creator-fees-banner {
+  margin-bottom: 14px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  white-space: pre-wrap;
+}
+
+.creator-fees-banner.success {
+  background: rgba(56, 179, 122, 0.12);
+  border-color: rgba(56, 179, 122, 0.35);
+  color: #a7f0cc;
+}
+
+.creator-fees-banner.error {
+  background: rgba(231, 77, 77, 0.1);
+  border-color: rgba(231, 77, 77, 0.35);
+  color: #ffb5b5;
+}
+
+.creator-fees-panel {
+  padding: 18px;
+}
+
+.creator-fees-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.creator-fees-panel-head h2 {
+  margin: 0;
+  color: #eaf2ff;
+  font-size: 18px;
+}
+
+.creator-fees-list {
+  display: grid;
+  gap: 12px;
+}
+
+.creator-fees-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #0d1628;
+  border: 1px solid #22324d;
+}
+
+.creator-fees-row-main {
+  display: grid;
+  gap: 6px;
+}
+
+.creator-fees-pair {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e8f3ff;
+}
+
+.creator-fees-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.creator-fees-amounts {
+  display: grid;
+  gap: 6px;
+  color: #c2d3ee;
+  font-size: 13px;
+}
+
+.creator-fees-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.creator-fees-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #16233c;
+  color: #8ea4c4;
+  font-size: 11px;
+  border: 1px solid #253757;
+}
+
+.creator-fees-pill.live {
+  background: rgba(58, 208, 255, 0.12);
+  color: #b3ebff;
+  border-color: rgba(58, 208, 255, 0.35);
+}
+
+.creator-fees-empty {
+  padding: 28px 18px;
+  text-align: center;
+  color: #7e92b1;
+}
+
+@media (max-width: 900px) {
+  .creator-fees-hero,
+  .creator-fees-row {
+    grid-template-columns: 1fr;
+    display: grid;
+    align-items: start;
+  }
+
+  .creator-fees-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .creator-fees-actions {
+    justify-content: flex-start;
+  }
+}
