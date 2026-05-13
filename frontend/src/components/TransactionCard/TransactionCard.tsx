@@ -1,5 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './TransactionCard.css'
+
+// Change this single value (milliseconds) to adjust how long the card stays visible
+export const CARD_LIFETIME_MS = 6000
+const CLOSE_ANIMATION_MS = 260
 
 type TransactionCardProps = {
   status: 'success' | 'error' | 'info'
@@ -15,8 +19,32 @@ export default function TransactionCard({ status, title, message, explorerUrl, s
   const [showDetails, setShowDetails] = useState(false)
   const statusLabel = status === 'success' ? 'OK' : status === 'error' ? 'ERR' : 'INFO'
 
+  const [isClosing, setIsClosing] = useState(false)
+
+  useEffect(() => {
+    if (!onClose) return
+
+    const startCloseTimer = window.setTimeout(() => {
+      setIsClosing(true)
+      // wait for the close animation to finish before calling parent's onClose
+      window.setTimeout(() => {
+        onClose()
+      }, CLOSE_ANIMATION_MS)
+    }, CARD_LIFETIME_MS)
+
+    return () => {
+      window.clearTimeout(startCloseTimer)
+    }
+  }, [onClose])
+
   return (
-    <div className={`tx-card tx-card--${status}`}>
+    <div
+      className={`tx-card tx-card--${status} ${isClosing ? 'tx-card--closing' : ''}`}
+      style={{ ['--tx-card-lifetime' as any]: `${CARD_LIFETIME_MS}ms` }}
+    >
+      <div
+        className={`tx-card__progress-bar ${status === 'info' ? 'tx-card__progress-bar--info' : 'tx-card__progress-bar--timed'}`}
+      />
       <div className="tx-card__header">
         <div className="tx-card__status">
           <span className="tx-card__badge">{statusLabel}</span>

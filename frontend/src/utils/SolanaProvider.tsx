@@ -9,6 +9,8 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { clusterApiUrl } from "@solana/web3.js";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
+let lastLoggedEndpoint: string | null = null
+
 interface SolanaProviderProps {
   children: ReactNode;
 }
@@ -26,7 +28,10 @@ export const SolanaProvider: FC<SolanaProviderProps> = ({ children }) => {
   useEffect(() => {
     try {
       ;(window as any).__SOLANA_ENDPOINT = endpoint
-      console.log('Resolved Solana endpoint ->', endpoint)
+      if (lastLoggedEndpoint !== endpoint) {
+        console.log('Resolved Solana endpoint ->', endpoint)
+        lastLoggedEndpoint = endpoint
+      }
     } catch (e) {
     }
   }, [endpoint])

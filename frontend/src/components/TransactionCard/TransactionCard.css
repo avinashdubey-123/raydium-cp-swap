@@ -5,6 +5,60 @@
   margin-bottom: 20px;
   border: 1px solid #2d3748;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.tx-card__progress-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  pointer-events: none;
+  transform-origin: right center;
+}
+
+.tx-card__progress-bar--timed {
+  animation: tx-card-progress-shrink var(--tx-card-lifetime) linear forwards;
+}
+
+.tx-card__progress-bar--info {
+  width: 100%;
+}
+
+.tx-card--success .tx-card__progress-bar {
+  background: linear-gradient(90deg, #10b981, #34d399);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+}
+
+.tx-card--error .tx-card__progress-bar {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+}
+
+.tx-card--info .tx-card__progress-bar {
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.8);
+}
+
+@keyframes tx-card-progress-shrink {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.tx-card {
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.tx-card--closing {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.995);
 }
 
 .tx-card--success {
