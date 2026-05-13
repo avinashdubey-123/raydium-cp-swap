@@ -18,15 +18,17 @@ import {
 import viewIcon from '../../assets/view.svg'
 import copyIcon from '../../assets/copy.svg'
 import showPriceIcon from '../../assets/show-price.svg'
+import toggleIcon from '../../assets/toggle.svg'
 import BN from 'bn.js'
 import { computeTransferFeeForPre, computeInverseTransferFee, CpmmFee } from '../../utils/curve/fee'
-import { CurveCalculator } from '../../utils/curve/calculator'
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import idlJson from '../../../idl/raydium_cp_swap.json'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
+
+type SwapDirection = 'token0-to-token1' | 'token1-to-token0'
 
 type Pool = {
   name?: string
@@ -70,6 +72,7 @@ export default function Swap() {
   const [selectedPool, setSelectedPool] = useState<PoolData | null>(null)
   const [showPoolSelector, setShowPoolSelector] = useState(false)
   const [poolsReloadKey, setPoolsReloadKey] = useState(0)
+  const [swapDirection, setSwapDirection] = useState<SwapDirection>('token0-to-token1')
 
   const detectTokenProgram = async (mint: PublicKey) => {
     const info = await connection.getAccountInfo(mint)
@@ -294,7 +297,7 @@ export default function Swap() {
 
   const [amountIn, setAmountIn] = useState('')
   const [amountOut, setAmountOut] = useState('')
-  const [lastEditedField, setLastEditedField] = useState<'token0' | 'token1'>('token0')
+  const [lastEditedField, setLastEditedField] = useState<'input' | 'output'>('input')
   const [hoverInfo, setHoverInfo] = useState<{ label: string; value: string } | null>(null)
   const hoverTimeout = useRef<number | null>(null)
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
@@ -323,6 +326,15 @@ export default function Swap() {
     return new BN(baseUnits || '0')
   }
 
+  const formatBaseUnitsToHuman = (value: BN, decimals: number) => {
+    if (decimals <= 0) return value.toString()
+
+    const raw = value.toString().padStart(decimals + 1, '0')
+    const wholePart = raw.slice(0, -decimals) || '0'
+    const fractionPart = raw.slice(-decimals).replace(/0+$/, '')
+    return fractionPart ? `${wholePart}.${fractionPart}` : wholePart
+  }
+
   const isAlreadyProcessedError = (err: any) => {
     const rawMsg = [err?.message, err?.transactionMessage, String(err || '')].filter(Boolean).join(' ').toLowerCase()
     return rawMsg.includes('already') && rawMsg.includes('processed')
@@ -337,6 +349,15 @@ export default function Swap() {
   const token0Str = activePool?.token0
   const token1Str = activePool?.token1
   const ammConfigStr = activePool?.ammConfig
+  const isToken0ToToken1 = swapDirection === 'token0-to-token1'
+  const inputTokenLabel = 'Input Token Amount'
+  const outputTokenLabel = 'Output Token Amount'
+  const inputTokenAddress = isToken0ToToken1 ? token0Str : token1Str
+  const outputTokenAddress = isToken0ToToken1 ? token1Str : token0Str
+  const inputTokenShort = shorten(inputTokenAddress)
+  const outputTokenShort = shorten(outputTokenAddress)
+  const inputQuoteLabel = isToken0ToToken1 ? 'Token0' : 'Token1'
+  const outputQuoteLabel = isToken0ToToken1 ? 'Token1' : 'Token0'
 
   const getPoolLabel = () => {
     if (!activePool) return 'Select Pool'
@@ -351,6 +372,16 @@ export default function Swap() {
   const getPoolSelectorLabel = () => {
     if (loadingPools) return 'Loading pools...'
     return getPoolLabel()
+  }
+
+  const toggleSwapDirection = () => {
+    setSwapDirection((current) => (current === 'token0-to-token1' ? 'token1-to-token0' : 'token0-to-token1'))
+    setAmountIn(amountOut)
+    setAmountOut(amountIn)
+    setLastEditedField('input')
+    setStatus(null)
+    setErrorDetails(null)
+    setTxResult(null)
   }
 
   const clearHoverTimeout = () => {
@@ -481,61 +512,150 @@ export default function Swap() {
     }
   }
 
-  const swapToken0ForToken1 = async (inputToken0Human: string) => {
-    const ctx = await loadSwapContext()
-    const inputToken0Base = parseHumanAmountToBaseUnits(inputToken0Human, Number(ctx.mint0.decimals ?? 0))
+  const getDirectionalContext = async (
+    ctx: Awaited<ReturnType<typeof loadSwapContext>>,
+    ownerPublicKey?: PublicKey,
+    direction: SwapDirection = swapDirection,
+  ) => {
+    const inputIsToken0 = direction === 'token0-to-token1'
+    const inputMint = inputIsToken0 ? ctx.t0 : ctx.t1
+    const outputMint = inputIsToken0 ? ctx.t1 : ctx.t0
+    const inputDecimals = Number(inputIsToken0 ? ctx.mint0.decimals ?? 0 : ctx.mint1.decimals ?? 0)
+    const outputDecimals = Number(inputIsToken0 ? ctx.mint1.decimals ?? 0 : ctx.mint0.decimals ?? 0)
+    const inputVault = inputIsToken0 ? ctx.token0Vault : ctx.token1Vault
+    const outputVault = inputIsToken0 ? ctx.token1Vault : ctx.token0Vault
+    const inputTokenProgram = await detectTokenProgram(inputMint)
+    const outputTokenProgram = await detectTokenProgram(outputMint)
+    const inputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(inputMint, ownerPublicKey, false, inputTokenProgram) : null
+    const outputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(outputMint, ownerPublicKey, false, outputTokenProgram) : null
+    const totalInputAmount = inputIsToken0 ? ctx.totalVault0 : ctx.totalVault1
+    const totalOutputAmount = inputIsToken0 ? ctx.totalVault1 : ctx.totalVault0
+    const creatorFeeOnInput = ctx.creatorFeeOn === 0 || (ctx.creatorFeeOn === 1 && inputIsToken0) || (ctx.creatorFeeOn === 2 && !inputIsToken0)
 
-    const fee0bn = await computeTransferFeeForPre(((program as any).provider as any).connection, ctx.t0, inputToken0Base)
-    const postToken0 = inputToken0Base.sub(fee0bn)
-
-    const isCreatorFeeOnInput = ctx.creatorFeeOn === 0 || (ctx.creatorFeeOn === 1 && true)
-
-    const result = CurveCalculator.swapBaseInput(
-      postToken0,
-      ctx.totalVault0,
-      ctx.totalVault1,
-      ctx.tradeFeeRate,
-      ctx.creatorFeeRate,
-      ctx.protocolFeeRate,
-      ctx.fundFeeRate,
-      isCreatorFeeOnInput
-    )
-
-    const outputTransferFee = await computeTransferFeeForPre(((program as any).provider as any).connection, ctx.t1, result.outputAmount)
-    const receiveAmount = result.outputAmount.sub(outputTransferFee)
-    const outputToken1Human = (Number(receiveAmount.toString()) / Math.pow(10, Number(ctx.mint1.decimals ?? 0))).toString()
-    return outputToken1Human
+    return {
+      inputIsToken0,
+      inputMint,
+      outputMint,
+      inputDecimals,
+      outputDecimals,
+      inputVault,
+      outputVault,
+      inputTokenProgram,
+      outputTokenProgram,
+      inputTokenAccount,
+      outputTokenAccount,
+      totalInputAmount,
+      totalOutputAmount,
+      creatorFeeOnInput,
+    }
   }
 
-  const quoteToken0ForToken1ExactOut = async (desiredToken1Human: string) => {
+  const quoteExactIn = async (humanAmount: string, direction: SwapDirection = swapDirection) => {
     const ctx = await loadSwapContext()
-    const desiredToken1Base = parseHumanAmountToBaseUnits(desiredToken1Human, Number(ctx.mint1.decimals ?? 0))
+    const resolved = await getDirectionalContext(ctx, undefined, direction)
+    const inputBase = parseHumanAmountToBaseUnits(humanAmount, resolved.inputDecimals)
+    const inputTransferFee = await computeTransferFeeForPre(((program as any).provider as any).connection, resolved.inputMint, inputBase)
+    const actualAmountIn = inputBase.sub(inputTransferFee)
 
-    const invOut = await computeInverseTransferFee(((program as any).provider as any).connection, ctx.t1, desiredToken1Base)
+    if (actualAmountIn.lte(new BN(0))) {
+      throw new Error('Input amount after transfer fee is zero')
+    }
+
+    let creatorFee = new BN(0)
+    let tradeFee: BN
+    let inputAmountLessFees: BN
+
+    if (resolved.creatorFeeOnInput) {
+      const totalFee = CpmmFee.tradingFee(actualAmountIn, ctx.tradeFeeRate.add(ctx.creatorFeeRate))
+      creatorFee = CpmmFee.splitCreatorFee(totalFee, ctx.tradeFeeRate, ctx.creatorFeeRate)
+      tradeFee = totalFee.sub(creatorFee)
+      inputAmountLessFees = actualAmountIn.sub(totalFee)
+    } else {
+      tradeFee = CpmmFee.tradingFee(actualAmountIn, ctx.tradeFeeRate)
+      inputAmountLessFees = actualAmountIn.sub(tradeFee)
+    }
+
+    const outputAmountSwapped = ConstantProductCurve.swapBaseInputWithoutFees(
+      inputAmountLessFees,
+      resolved.totalInputAmount,
+      resolved.totalOutputAmount,
+    )
+
+    let outputAmount = outputAmountSwapped
+    if (!resolved.creatorFeeOnInput) {
+      const creatorFeeOnOutput = CpmmFee.creatorFee(outputAmountSwapped, ctx.creatorFeeRate)
+      creatorFee = creatorFeeOnOutput
+      outputAmount = outputAmountSwapped.sub(creatorFeeOnOutput)
+    }
+
+    const outputTransferFee = await computeTransferFeeForPre(((program as any).provider as any).connection, resolved.outputMint, outputAmount)
+    const receiveAmount = outputAmount.sub(outputTransferFee)
+
+    return {
+      inputBase,
+      actualAmountIn,
+      inputAmountLessFees,
+      tradeFee,
+      creatorFee,
+      outputAmount,
+      receiveAmount,
+      inputTransferFee,
+      outputTransferFee,
+      inputDecimals: resolved.inputDecimals,
+      outputDecimals: resolved.outputDecimals,
+    }
+  }
+
+  const quoteExactOut = async (humanAmount: string, direction: SwapDirection = swapDirection) => {
+    const ctx = await loadSwapContext()
+    const resolved = await getDirectionalContext(ctx, undefined, direction)
+    const desiredOutputBase = parseHumanAmountToBaseUnits(humanAmount, resolved.outputDecimals)
+
+    const invOut = await computeInverseTransferFee(((program as any).provider as any).connection, resolved.outputMint, desiredOutputBase)
     const preTransferOutput = invOut.transferAmount
-
-    const isCreatorFeeOnInput = ctx.creatorFeeOn === 0 || ctx.creatorFeeOn === 1
+    const outputTransferFee = invOut.transferFee
 
     let outputAmountSwapped = preTransferOutput
-    if (!isCreatorFeeOnInput) {
+    let creatorFee = new BN(0)
+    if (!resolved.creatorFeeOnInput) {
       outputAmountSwapped = CpmmFee.calculatePreFeeAmount(preTransferOutput, ctx.creatorFeeRate)
+      creatorFee = outputAmountSwapped.sub(preTransferOutput)
     }
 
     const inputAmountLessFees = ConstantProductCurve.swapBaseOutputWithoutFees(
       outputAmountSwapped,
-      ctx.totalVault0,
-      ctx.totalVault1,
+      resolved.totalInputAmount,
+      resolved.totalOutputAmount,
     )
 
-    let actualAmountIn: BN
-    if (isCreatorFeeOnInput) {
+    let actualAmountIn = new BN(0)
+    let tradeFee = new BN(0)
+    if (resolved.creatorFeeOnInput) {
       actualAmountIn = CpmmFee.calculatePreFeeAmount(inputAmountLessFees, ctx.tradeFeeRate.add(ctx.creatorFeeRate))
+      const totalFee = actualAmountIn.sub(inputAmountLessFees)
+      creatorFee = CpmmFee.splitCreatorFee(totalFee, ctx.tradeFeeRate, ctx.creatorFeeRate)
+      tradeFee = totalFee.sub(creatorFee)
     } else {
       actualAmountIn = CpmmFee.calculatePreFeeAmount(inputAmountLessFees, ctx.tradeFeeRate)
+      tradeFee = actualAmountIn.sub(inputAmountLessFees)
     }
 
-    const invIn = await computeInverseTransferFee(((program as any).provider as any).connection, ctx.t0, actualAmountIn)
-    return (Number(invIn.transferAmount.toString()) / Math.pow(10, Number(ctx.mint0.decimals ?? 0))).toString()
+    const invIn = await computeInverseTransferFee(((program as any).provider as any).connection, resolved.inputMint, actualAmountIn)
+
+    return {
+      desiredOutputBase,
+      preTransferOutput,
+      outputAmountSwapped,
+      inputAmountLessFees,
+      actualAmountIn,
+      tradeFee,
+      creatorFee,
+      inputTransferFee: invIn.transferFee,
+      maxInputPreFee: invIn.transferAmount,
+      outputTransferFee,
+      inputDecimals: resolved.inputDecimals,
+      outputDecimals: resolved.outputDecimals,
+    }
   }
 
   const loadPrices = async () => {
@@ -546,9 +666,12 @@ export default function Swap() {
 
     setPriceLoading(true)
     try {
-      const token0ToToken1 = await swapToken0ForToken1('1')
-      const token1ToToken0 = await quoteToken0ForToken1ExactOut('1')
-      setPriceDetails({ token0ToToken1, token1ToToken0 })
+      const exactInQuote = await quoteExactIn('1')
+      const exactOutQuote = await quoteExactOut('1')
+      setPriceDetails({
+        token0ToToken1: formatBaseUnitsToHuman(exactInQuote.receiveAmount, exactInQuote.outputDecimals),
+        token1ToToken0: formatBaseUnitsToHuman(exactOutQuote.maxInputPreFee, exactOutQuote.inputDecimals),
+      })
     } catch (err) {
       setPriceDetails(null)
     } finally {
@@ -558,7 +681,7 @@ export default function Swap() {
 
   useEffect(() => {
     loadPrices()
-  }, [activePool?.poolPda, token0MintParam, token1MintParam])
+  }, [activePool?.poolPda, token0MintParam, token1MintParam, swapDirection])
 
   async function handleSwap() {
     if (!program) {
@@ -581,37 +704,35 @@ export default function Swap() {
       const [authority] = await getAuthAddress((program as any).programId as PublicKey)
       const payer = wallet.publicKey!
       const ctx = await loadSwapContext(payer)
-      await ensureAssociatedTokenAccount(payer, payer, ctx.t0, ctx.inputTokenProgram)
-      await ensureAssociatedTokenAccount(payer, payer, ctx.t1, ctx.outputTokenProgram)
+      const direction = await getDirectionalContext(ctx, payer)
+      await ensureAssociatedTokenAccount(payer, payer, direction.inputMint, direction.inputTokenProgram)
+      await ensureAssociatedTokenAccount(payer, payer, direction.outputMint, direction.outputTokenProgram)
 
-
-      if (lastEditedField === 'token0') {
-        const inputToken0Human = Number(amountIn || '0')
-        if (inputToken0Human <= 0) {
-          alert('Enter valid Token0 amount for swap')
+      if (lastEditedField === 'input') {
+        if (Number(amountIn || '0') <= 0) {
+          alert(`Enter valid ${inputTokenLabel} for swap`)
           return
         }
 
-        const inputToken0Base = parseHumanAmountToBaseUnits(amountIn, Number(ctx.mint0.decimals ?? 0))
-        const uiExpectedOutBase = parseHumanAmountToBaseUnits(amountOut, Number(ctx.mint1.decimals ?? 0))
-        const minOutToken1 = uiExpectedOutBase.mul(new BN(99)).div(new BN(100))
+        const quote = await quoteExactIn(amountIn)
+        const minimumAmountOut = quote.receiveAmount.mul(new BN(99)).div(new BN(100))
 
         try {
           const tx = await (program as any).methods
-            .swapBaseInput(new anchor.BN(inputToken0Base.toString()), new anchor.BN(minOutToken1.toString()))
+            .swapBaseInput(new anchor.BN(quote.inputBase.toString()), new anchor.BN(minimumAmountOut.toString()))
             .accounts({
               payer: wallet.publicKey,
               authority,
               ammConfig: ammConfigAccount,
               poolState: ctx.poolAddr,
-              inputTokenAccount: ctx.inputTokenAccount,
-              outputTokenAccount: ctx.outputTokenAccount,
-              inputVault: ctx.token0Vault,
-              outputVault: ctx.token1Vault,
-              inputTokenProgram: ctx.inputTokenProgram,
-              outputTokenProgram: ctx.outputTokenProgram,
-              inputTokenMint: ctx.t0,
-              outputTokenMint: ctx.t1,
+              inputTokenAccount: direction.inputTokenAccount,
+              outputTokenAccount: direction.outputTokenAccount,
+              inputVault: direction.inputVault,
+              outputVault: direction.outputVault,
+              inputTokenProgram: direction.inputTokenProgram,
+              outputTokenProgram: direction.outputTokenProgram,
+              inputTokenMint: direction.inputMint,
+              outputTokenMint: direction.outputMint,
               observationState: ctx.observationState,
             })
             .rpc()
@@ -630,32 +751,30 @@ export default function Swap() {
           setBusy(false)
         }
       } else {
-        const desiredToken1Human = Number(amountOut || '0')
-        if (desiredToken1Human <= 0) {
-          alert('Enter valid Token1 amount to receive')
+        if (Number(amountOut || '0') <= 0) {
+          alert(`Enter valid ${outputTokenLabel} to receive`)
           return
         }
 
-        const desiredToken1Base = parseHumanAmountToBaseUnits(amountOut, Number(ctx.mint1.decimals ?? 0))      
-        const uiExpectedInBase = parseHumanAmountToBaseUnits(amountIn, Number(ctx.mint0.decimals ?? 0))
-        const maxInputPreFee = uiExpectedInBase.mul(new BN(101)).div(new BN(100))
+        const quote = await quoteExactOut(amountOut)
+        const maximumInputPreFee = quote.maxInputPreFee.mul(new BN(101)).div(new BN(100))
 
         try {
           const tx = await (program as any).methods
-            .swapBaseOutput(new anchor.BN(maxInputPreFee.toString()), new anchor.BN(desiredToken1Base.toString()))
+            .swapBaseOutput(new anchor.BN(maximumInputPreFee.toString()), new anchor.BN(quote.desiredOutputBase.toString()))
             .accounts({
               payer: wallet.publicKey,
               authority,
               ammConfig: ammConfigAccount,
               poolState: ctx.poolAddr,
-              inputTokenAccount: ctx.inputTokenAccount,
-              outputTokenAccount: ctx.outputTokenAccount,
-              inputVault: ctx.token0Vault,
-              outputVault: ctx.token1Vault,
-              inputTokenProgram: ctx.inputTokenProgram,
-              outputTokenProgram: ctx.outputTokenProgram,
-              inputTokenMint: ctx.t0,
-              outputTokenMint: ctx.t1,
+              inputTokenAccount: direction.inputTokenAccount,
+              outputTokenAccount: direction.outputTokenAccount,
+              inputVault: direction.inputVault,
+              outputVault: direction.outputVault,
+              inputTokenProgram: direction.inputTokenProgram,
+              outputTokenProgram: direction.outputTokenProgram,
+              inputTokenMint: direction.inputMint,
+              outputTokenMint: direction.outputMint,
               observationState: ctx.observationState,
             })
             .rpc()
@@ -668,6 +787,7 @@ export default function Swap() {
           setBusy(false)
         } catch (err: any) {
           if (!isAlreadyProcessedError(err)) {
+            console.error('Swap transaction failed:', err)
           }
           await showSendErrorDetails(err, wallet.publicKey ?? undefined)
           setBusy(false)
@@ -880,16 +1000,16 @@ export default function Swap() {
                     <form className="swap-form" onSubmit={onSubmit}>
                       <div className="token-row">
                         <div className="token-info">
-                          <span className="token-label">Token0 amount</span>
+                          <span className="token-label">{inputTokenLabel}</span>
                           <div className="token-address">
-                            <span>{shorten(token0Str)}</span>
+                            <span>{inputTokenShort}</span>
                           </div>
                         </div>
                         <input
                           className="swap-input"
                           value={amountIn}
                           onChange={async (e) => {
-                            setLastEditedField('token0')
+                            setLastEditedField('input')
                             const next = e.target.value
                             setAmountIn(next)
                             if (!next || Number(next) <= 0) {
@@ -897,7 +1017,8 @@ export default function Swap() {
                               return
                             }
                             try {
-                              setAmountOut(await swapToken0ForToken1(next))
+                              const quote = await quoteExactIn(next)
+                              setAmountOut(formatBaseUnitsToHuman(quote.receiveAmount, quote.outputDecimals))
                             } catch (err) {
                               setAmountOut('')
                             }
@@ -906,18 +1027,31 @@ export default function Swap() {
                         />
                       </div>
 
+                      <div className="swap-direction-toggle">
+                        <button
+                          type="button"
+                          className="swap-direction-toggle__btn"
+                          onClick={toggleSwapDirection}
+                          aria-label="Swap token direction"
+                          title="Swap direction"
+                        >
+                          <span className="swap-direction-toggle__icon">↓</span>
+                          <img src={toggleIcon} alt="swap" className="swap-direction-toggle__svg" />
+                        </button>
+                      </div>
+
                       <div className="token-row">
                         <div className="token-info">
-                          <span className="token-label">Token1 amount</span>
+                          <span className="token-label">{outputTokenLabel}</span>
                           <div className="token-address">
-                            <span>{shorten(token1Str)}</span>
+                            <span>{outputTokenShort}</span>
                           </div>
                         </div>
                         <input
                           className="swap-input"
                           value={amountOut}
                           onChange={async (e) => {
-                            setLastEditedField('token1')
+                            setLastEditedField('output')
                             const next = e.target.value
                             setAmountOut(next)
                             if (!next || Number(next) <= 0) {
@@ -925,7 +1059,8 @@ export default function Swap() {
                               return
                             }
                             try {
-                              setAmountIn(await quoteToken0ForToken1ExactOut(next))
+                              const quote = await quoteExactOut(next)
+                              setAmountIn(formatBaseUnitsToHuman(quote.maxInputPreFee, quote.inputDecimals))
                             } catch (err) {
                               setAmountIn('')
                             }
@@ -942,18 +1077,18 @@ export default function Swap() {
                             ) : priceDetails ? (
                               showInversePrice ? (
                                 <span className="swap-price-strip__text">
-                                  1 Token1 ≈ {priceDetails.token1ToToken0} Token0
+                                  1 {outputQuoteLabel} ≈ {priceDetails.token1ToToken0} {inputQuoteLabel}
                                 </span>
                               ) : (
                                 <span className="swap-price-strip__text">
-                                  1 Token0 ≈ {priceDetails.token0ToToken1} Token1
+                                  1 {inputQuoteLabel} ≈ {priceDetails.token0ToToken1} {outputQuoteLabel}
                                 </span>
                               )
                             ) : (
                               <span className="swap-price-strip__text">Price unavailable</span>
                             )}
                             <span className="swap-price-strip__suffix">
-                              {showInversePrice ? 'token0/token1' : 'token1/token0'}
+                              {showInversePrice ? `${outputQuoteLabel.toLowerCase()}/${inputQuoteLabel.toLowerCase()}` : `${inputQuoteLabel.toLowerCase()}/${outputQuoteLabel.toLowerCase()}`}
                             </span>
                           </div>
                           <div className="swap-price-strip__toggle">
@@ -972,14 +1107,14 @@ export default function Swap() {
                         </div>
 
                         <div className="swap-quote-mode swap-quote-mode--editing">
-                          {lastEditedField === 'token0'
-                            ? 'Editing Token0 quotes the minimum Token1 you will receive.'
-                            : 'Editing Token1 quotes the maximum Token0 input required.'}
+                          {lastEditedField === 'input'
+                            ? `Editing ${inputQuoteLabel} quotes the minimum ${outputQuoteLabel} you will receive.`
+                            : `Editing ${outputQuoteLabel} quotes the maximum ${inputQuoteLabel} input required.`}
                         </div>
                       </div>
 
                       <div className="swap-actions-row">
-                        <button type="submit" className="btn primary" disabled={busy || !(numeric(lastEditedField === 'token0' ? amountIn : amountOut) > 0) || !wallet.publicKey}>
+                        <button type="submit" className="btn primary" disabled={busy || !(numeric(lastEditedField === 'input' ? amountIn : amountOut) > 0) || !wallet.publicKey}>
                           Swap
                         </button>
                       </div>
