@@ -53,7 +53,7 @@
 }
 
 .tx-card {
-  transition: opacity 160ms ease, transform 160ms ease;
+  transition: opacity var(--tx-card-close-duration, 260ms) ease, transform var(--tx-card-close-duration, 260ms) ease;
 }
 
 .tx-card--closing {

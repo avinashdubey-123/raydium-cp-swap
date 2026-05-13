@@ -70,7 +70,7 @@ async function main() {
   const rpc = "https://api.devnet.solana.com"; // RPC endpoint
   const payerPath = "/home/avinash_dubey/.config/solana/id1.json"; // path to payer keypair JSON (no trailing space)
   const decimals = 9; // mint decimals
-  const mintArg: string = "7mXcUm1GNCX3NUfuFKXm2nRcNVRbJudXdDBUouJtxNUn"; // "new" or existing mint pubkey string
+  const mintArg: string = "288X3QggojQrXfVRuxah5F6PWTBxJkdLnQ8YbUNGrkjT"; // "new" or existing mint pubkey string
   // Single recipient: format "ADDRESS" or "ADDRESS:AMOUNT" (amount in token units)
   const recipientArg: string = "F8j5MGtzkWcu4BsNtFHjokcYDyyik31nQ9M8GSbdiXgy:2000"; // <<< REPLACE before running
 

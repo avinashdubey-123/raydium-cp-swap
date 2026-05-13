@@ -3,7 +3,7 @@ import './TransactionCard.css'
 
 // Change this single value (milliseconds) to adjust how long the card stays visible
 export const CARD_LIFETIME_MS = 6000
-const CLOSE_ANIMATION_MS = 260
+const CLOSE_ANIMATION_MS = 260  // must match --tx-card-close-duration in CSS
 
 type TransactionCardProps = {
   status: 'success' | 'error' | 'info'
@@ -40,7 +40,10 @@ export default function TransactionCard({ status, title, message, explorerUrl, s
   return (
     <div
       className={`tx-card tx-card--${status} ${isClosing ? 'tx-card--closing' : ''}`}
-      style={{ ['--tx-card-lifetime' as any]: `${CARD_LIFETIME_MS}ms` }}
+      style={{
+        ['--tx-card-lifetime' as any]: `${CARD_LIFETIME_MS}ms`,
+        ['--tx-card-close-duration' as any]: `${CLOSE_ANIMATION_MS}ms`,
+      }}
     >
       <div
         className={`tx-card__progress-bar ${status === 'info' ? 'tx-card__progress-bar--info' : 'tx-card__progress-bar--timed'}`}
