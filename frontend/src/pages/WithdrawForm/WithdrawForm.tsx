@@ -72,6 +72,14 @@ const toPublicKey = (value?: string | PublicKey | null) => {
     }
 }
 
+const detectTokenProgram = async (connectionRef: any, mint: PublicKey) => {
+    const info = await connectionRef.getAccountInfo(mint)
+    if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
+    if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
+    if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
+    return TOKEN_PROGRAM_ID
+}
+
 function WithdrawFormContent({ state, onClose, embedded = false }: { state: WithdrawState; onClose: () => void; embedded?: boolean }) {
     const [percent, setPercent] = useState(100)
     const [keepPositionOpen, setKeepPositionOpen] = useState(false)
@@ -140,16 +148,9 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
             const [token0Vault] = await getPoolVaultAddress(poolPda, token0Mint, programId)
             const [token1Vault] = await getPoolVaultAddress(poolPda, token1Mint, programId)
 
-            const token0Program = (await connection.getAccountInfo(token0Mint))?.owner?.equals(TOKEN_PROGRAM_ID)
-                ? TOKEN_PROGRAM_ID
-                : TOKEN_2022_PROGRAM_ID
-            const token1Program = (await connection.getAccountInfo(token1Mint))?.owner?.equals(TOKEN_PROGRAM_ID)
-                ? TOKEN_PROGRAM_ID
-                : TOKEN_2022_PROGRAM_ID
-
-            const lpTokenProgram = (await connection.getAccountInfo(lpMint))?.owner?.equals(TOKEN_PROGRAM_ID)
-                ? TOKEN_PROGRAM_ID
-                : TOKEN_2022_PROGRAM_ID
+            const token0Program = await detectTokenProgram(connection, token0Mint)
+            const token1Program = await detectTokenProgram(connection, token1Mint)
+            const lpTokenProgram = await detectTokenProgram(connection, lpMint)
 
             const ownerLpToken = getAssociatedTokenAddressSync(lpMint, wallet.publicKey, false, lpTokenProgram as PublicKey)
             const ownerToken0Account = getAssociatedTokenAddressSync(token0Mint, wallet.publicKey, false, token0Program as PublicKey)
@@ -227,13 +228,20 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const [token0Vault] = await getPoolVaultAddress(poolPda, token0Mint, programId)
                 const [token1Vault] = await getPoolVaultAddress(poolPda, token1Mint, programId)
 
-                const vault0Acct = await getAccount(connection, token0Vault)
-                const vault1Acct = await getAccount(connection, token1Vault)
+                const token0Program = await detectTokenProgram(connection, token0Mint)
+                const token1Program = await detectTokenProgram(connection, token1Mint)
+                const lpTokenProgram = await detectTokenProgram(connection, lpMint)
+
+                const mint0 = await getMint(connection, token0Mint, 'confirmed', token0Program)
+                const mint1 = await getMint(connection, token1Mint, 'confirmed', token1Program)
+                const lpMintAcct = await getMint(connection, lpMint, 'confirmed', lpTokenProgram)
+
+                const vault0Acct = await getAccount(connection, token0Vault, 'confirmed', token0Program)
+                const vault1Acct = await getAccount(connection, token1Vault, 'confirmed', token1Program)
 
                 const poolVault0Amount = new BN(vault0Acct.amount.toString())
                 const poolVault1Amount = new BN(vault1Acct.amount.toString())
 
-                const lpMintAcct = await getMint(connection, lpMint)
                 const lpSupplyFromState = new BN(poolStateAcct.lpSupply?.toString?.() ?? lpMintAcct.supply.toString())
 
                 const proto0 = new BN(poolStateAcct.protocolFeesToken0?.toString?.() ?? poolStateAcct.protocolFeesToken0 ?? 0)
@@ -249,11 +257,8 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const totalVault0 = poolVault0Amount.sub(feesToken0)
                 const totalVault1 = poolVault1Amount.sub(feesToken1)
 
-                const lpTokenProgram = (await connection.getAccountInfo(lpMint))?.owner?.equals(TOKEN_PROGRAM_ID)
-                    ? TOKEN_PROGRAM_ID
-                    : TOKEN_2022_PROGRAM_ID
                 const ownerLpToken = getAssociatedTokenAddressSync(lpMint, wallet.publicKey, false, lpTokenProgram as PublicKey)
-                const ownerLpAcct = await getAccount(connection, ownerLpToken)
+                const ownerLpAcct = await getAccount(connection, ownerLpToken, 'confirmed', lpTokenProgram)
                 const ownerLpBalance = new BN(ownerLpAcct.amount.toString())
 
                 const effectivePercent = keepPositionOpen && percent >= 100 ? 99.5 : percent
@@ -292,8 +297,8 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const receive0 = token0Amount.sub(fee0)
                 const receive1 = token1Amount.sub(fee1)
 
-                const token0Ui = formatBaseUnitsToHuman(receive0, lpMintAcct.decimals)
-                const token1Ui = formatBaseUnitsToHuman(receive1, lpMintAcct.decimals)
+                const token0Ui = formatBaseUnitsToHuman(receive0, mint0.decimals)
+                const token1Ui = formatBaseUnitsToHuman(receive1, mint1.decimals)
 
                 if (!cancelled) {
                     setQuote({

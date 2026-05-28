@@ -325,8 +325,14 @@ export default function InitializeForm() {
     setTokenPickerStatus(null)
   }, [tokenPickerFor, mintA, mintB])
 
-  const tokenSearchResults = useMemo(() => searchTokenRegistry(tokenQuery, tokenRegistry), [tokenQuery, tokenRegistry])
-  const canAddToken = isValidMintAddress(tokenQuery) && !tokenRegistry.some(token => token.mint === tokenQuery.trim())
+  const otherSelectedMint = tokenPickerFor === 'mintA' ? mintB.trim() : tokenPickerFor === 'mintB' ? mintA.trim() : ''
+  const tokenSearchResults = useMemo(
+    () => searchTokenRegistry(tokenQuery, tokenRegistry).filter(token => token.mint !== otherSelectedMint),
+    [tokenQuery, tokenRegistry, otherSelectedMint]
+  )
+  const canAddToken = isValidMintAddress(tokenQuery)
+    && !tokenRegistry.some(token => token.mint === tokenQuery.trim())
+    && tokenQuery.trim() !== otherSelectedMint
 
   function closeTokenPicker() {
     setTokenPickerFor(null)
@@ -602,18 +608,25 @@ export default function InitializeForm() {
                   <p style={{ marginTop: '20px' }}>Verifying whitelist status...</p>
                 </div>
               ) : isPermissionedMode && !isWhitelisted ? (
-                <div className="initialize-card" style={{ textAlign: 'center', padding: '40px' }}>
-                  <div className="admin-banner error" style={{ marginBottom: '20px', borderRadius: '8px' }}>
-                    <strong>Access Denied</strong>
+                <div className="initialize-access-denied">
+                  <div className="initialize-access-denied__icon">!</div>
+                  <div className="initialize-access-denied__content">
+                    <div className="initialize-access-denied__title-row">
+                      <strong className="initialize-access-denied__title">Access denied</strong>
+                      <span className="initialize-access-denied__tag">Creator fees</span>
+                    </div>
+                    <p className="initialize-access-denied__body">
+                      You are not on the whitelist yet. Pool creation with creator fees is limited to approved wallets.
+                    </p>
                   </div>
-                  <p>You are not on the whitelist. You cannot create a pool with creator fees until you are whitelisted by the admin.</p>
-                  <button
-                    className="initialize-btn initialize-btn--primary"
-                    style={{ marginTop: '24px' }}
-                    onClick={() => navigate('/liquidity')}
-                  >
-                    Return to Liquidity
-                  </button>
+                  <div className="initialize-access-denied__actions">
+                    <button
+                      className="initialize-btn initialize-btn--primary initialize-access-denied__button"
+                      onClick={() => navigate('/liquidity')}
+                    >
+                      Return to Liquidity
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>

@@ -163,6 +163,107 @@
   width: 100%;
 }
 
+.initialize-access-denied {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(239, 68, 68, 0.12), transparent 45%),
+    linear-gradient(180deg, rgba(20, 25, 44, 0.98) 0%, rgba(13, 20, 40, 0.96) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.initialize-access-denied__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ffb4b4;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.initialize-access-denied__content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.initialize-access-denied__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.initialize-access-denied__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--if-text-primary);
+  letter-spacing: -0.2px;
+}
+
+.initialize-access-denied__tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #ffb4b4;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.initialize-access-denied__body {
+  margin: 0;
+  color: var(--if-text-secondary);
+  font-size: 13.5px;
+  line-height: 1.65;
+  max-width: 42ch;
+}
+
+.initialize-access-denied__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.initialize-access-denied__button {
+  min-width: 180px;
+}
+
+@media (max-width: 640px) {
+  .initialize-access-denied {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+
+  .initialize-access-denied__actions {
+    justify-content: stretch;
+  }
+
+  .initialize-access-denied__button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 /* Premium Form Containers */
 .dex-form-container-card {
   width: 100%;
@@ -672,6 +773,7 @@
   background: var(--if-accent, #39d0d8);
   color: #0c1427 !important;
   font-weight: 700;
+  border-radius: 14px;
 }
 
 .initialize-btn--primary:hover:not(:disabled) {
