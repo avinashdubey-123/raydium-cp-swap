@@ -48,10 +48,56 @@
   gap: 8px;
 }
 
-.wallet-adapter-button-trigger {
-  background-color: #11204c;
+.wallet-adapter-button {
+  background-color: #1d2a47 !important;
+  color: #e6f0ff !important;
+  font-family: var(--font-body) !important;
+  font-weight: 600 !important;
+  border-radius: 20px !important;
+  transition: all 0.15s ease !important;
 }
 
-.wallet-adapter-button {
-  border-radius: 20px;
+.wallet-adapter-button:hover {
+  background-color: #293a5e !important;
+  box-shadow: 0 0 12px rgba(29, 42, 71, 0.4) !important;
+}
+
+/* Styled Wallet Adapter Dropdown List - Unified Deep Blue Theme */
+.wallet-adapter-dropdown-list {
+  background: #1d2a47 !important;
+  border: 1px solid rgba(57, 208, 216, 0.3) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+  margin: 2px;
+}
+
+.wallet-adapter-dropdown-list-active {
+  animation: dropdown-fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+@keyframes dropdown-fade-in {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.wallet-adapter-dropdown-list-item {
+  background: transparent !important;
+  color: #e6f0ff !important;
+  font-family: var(--font-body) !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease !important;
+  text-align: left !important;
+}
+
+.wallet-adapter-dropdown-list-item:hover {
+  background-color: rgba(57, 208, 216, 0.15) !important;
+  color: #39d0d8 !important;
 }

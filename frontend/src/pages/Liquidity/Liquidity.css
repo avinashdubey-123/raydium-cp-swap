@@ -8,8 +8,8 @@
 .lp-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 10px;
+  align-items: center;
+  margin-bottom: 24px;
   flex-wrap: wrap;
   gap: 20px;
 }
@@ -37,40 +37,45 @@
   text-align: left;
 }
 
+/* Pools Summary Dashboard Card */
 .lp-stats {
   display: flex;
   gap: 16px;
 }
 
 .lp-stat-card {
-  background: #131c2e;
-  border: 1px solid #1e2d45;
+  background: rgba(19, 28, 46, 0.6);
+  border: 1px solid rgba(57, 162, 194, 0.25);
   border-radius: 12px;
-  padding: 16px 24px;
+  padding: 12px 24px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 200px;
+  gap: 4px;
+  min-width: 160px;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(57, 208, 216, 0.05);
 }
 
 .lp-stat-label {
-  font-size: 12px;
+  font-size: 11px;
   color: #7a8fa6;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
+  font-weight: 600;
 }
 
 .lp-stat-value {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
-  color: #e6f0ff;
+  color: #39d0d8;
+  text-shadow: 0 0 10px rgba(57, 208, 216, 0.25);
 }
 
 .lp-filter-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   flex-wrap: wrap;
   gap: 16px;
 }
@@ -88,12 +93,13 @@
   border-radius: 20px;
   cursor: pointer;
   font-size: 13px;
-  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
+  transition: all 0.2s ease;
 }
 
 .lp-filter:hover {
   background: var(--btn-outline-hover-bg);
   border-color: var(--btn-outline-hover-border);
+  box-shadow: 0 0 10px rgba(57, 208, 216, 0.15);
 }
 
 .lp-filter.active {
@@ -117,8 +123,8 @@
   color: #c8d4e8;
   font-size: 13px;
   outline: none;
-  width: 200px;
-  transition: border-color 0.15s;
+  width: 240px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .lp-search::placeholder {
@@ -127,6 +133,7 @@
 
 .lp-search:focus {
   border-color: #39d0d8;
+  box-shadow: 0 0 10px rgba(57, 208, 216, 0.2);
 }
 
 .lp-create-btn {
@@ -139,14 +146,18 @@
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  transition: all 0.2s ease;
 }
 
 .lp-create-btn:hover {
-  filter: brightness(0.9);
+  filter: brightness(1.1);
+  box-shadow: 0 0 12px rgba(57, 208, 216, 0.25);
+  transform: translateY(-1px);
 }
 
 .lp-create-btn:active {
-  filter: brightness(0.7);
+  transform: translateY(0);
+  filter: brightness(0.9);
 }
 
 .lp-create-fees-btn {
@@ -155,11 +166,8 @@
 }
 
 .lp-create-fees-btn:hover {
-  filter: brightness(0.9);
-}
-
-.lp-create-fees-btn:active {
-  filter: brightness(0.7);
+  filter: brightness(1.1);
+  box-shadow: 0 0 12px rgba(153, 69, 255, 0.25);
 }
 
 .lp-filter-left {
@@ -182,9 +190,9 @@
 }
 
 .lp-th {
-  padding: 14px 20px;
+  padding: 16px 20px;
   text-align: right;
-  font-size: clamp(10px, 0.9vw, 12px);
+  font-size: clamp(11px, 0.9vw, 13px);
   font-weight: 600;
   color: #4a5a70;
   text-transform: uppercase;
@@ -198,11 +206,11 @@
 }
 
 .lp-row {
-  transition: background 0.12s;
+  transition: background 0.15s ease;
 }
 
 .lp-row:hover {
-  background: #131c2e;
+  background: rgba(19, 28, 46, 0.5);
 }
 
 .lp-row:not(:last-child) .lp-td {
@@ -210,42 +218,32 @@
 }
 
 .lp-td {
-  padding: 16px 20px;
+  padding: 18px 20px;
   text-align: right;
-  font-size: clamp(12px, 1vw, 14px);
+  font-size: clamp(13px, 1vw, 14px);
   color: #c8d4e8;
   vertical-align: middle;
   white-space: nowrap;
 }
 
 .lp-col-pool {
-  width: 40%;
-  text-align: left;
+  width: 26%;
+  text-align: center;
 }
 
 .lp-col-liquidity {
-  width: 22%;
+  width: 34%;
   text-align: center;
 }
 
-.lp-col-volume {
-  width: 14%;
-  text-align: center;
-}
-
-.lp-col-fees {
-  width: 12%;
-  text-align: center;
-}
-
-.lp-col-apr {
-  width: 12%;
+.lp-col-fee-tier {
+  width: 16%;
   text-align: center;
 }
 
 .lp-col-actions {
-  width: 12%;
-  text-align: right;
+  width: 18%;
+  text-align: center;
 }
 
 .lp-td-pool {
@@ -255,12 +253,55 @@
 .lp-td-pool-inner {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
-.lp-pool-icons {
+/* Pool Icon Redesign - Circular Overlapping Spheres */
+.lp-pool-badges {
+  display: flex;
+  position: relative;
+  width: 52px;
+  height: 32px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.lp-pool-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  border: 2.5px solid #0f1929; /* Clean visual spacing */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute;
+}
+
+.lp-pool-badge-a {
+  left: 0;
+  z-index: 2;
+}
+
+.lp-pool-badge-b {
+  left: 18px;
+  z-index: 1;
+}
+
+/* Sphere Hover Animations */
+.lp-pool-badges:hover .lp-pool-badge-a {
+  transform: scale(1.1) translateX(-3px);
+  z-index: 3;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.lp-pool-badges:hover .lp-pool-badge-b {
+  transform: scale(1.1) translateX(3px);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
 }
 
 .lp-hover-wrapper {
@@ -271,39 +312,51 @@
 
 .lp-hover-card {
   position: absolute;
-  top: 36px;
+  top: 38px;
   left: 0;
   z-index: 100;
-  min-width: 260px;
-  padding: 10px 12px;
-  background: rgba(27, 38, 56, 0.96);
-  border: 1px solid #2b3a55;
-  border-radius: 10px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  min-width: 280px;
+  padding: 12px 14px;
+  background: rgba(15, 25, 41, 0.98);
+  border: 1px solid rgba(57, 162, 194, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   color: #e6f0ff;
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.4;
   pointer-events: auto;
+  animation: card-fade-in 0.15s ease forwards;
+}
+
+@keyframes card-fade-in {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .lp-hover-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .lp-hover-row + .lp-hover-row {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .lp-hover-card strong {
-  color: #cfe4ff;
+  color: #39d0d8;
 }
 
 .lp-copy-btn {
   background: rgba(57, 208, 216, 0.08);
-  border: 1px solid #39d0d8;
+  border: 1px solid rgba(57, 208, 216, 0.3);
   color: #39d0d8;
   padding: 4px 6px;
   border-radius: 6px;
@@ -311,7 +364,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.08s ease, background 0.12s ease, box-shadow 0.12s ease;
+  transition: all 0.15s ease;
 }
 
 .lp-copy-btn img {
@@ -321,30 +374,13 @@
 
 .lp-copy-btn:hover {
   background: #39d0d8;
+  border-color: #39d0d8;
   color: #061014;
 }
 
 .lp-copy-btn:active {
   transform: scale(0.96);
   box-shadow: 0 0 0 2px rgba(57, 208, 216, 0.25);
-}
-
-.lp-icon {
-  display: inline-block;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid #0b1221;
-}
-
-.lp-icon-a {
-  background: linear-gradient(135deg, #9945ff, #14f195);
-  z-index: 1;
-}
-
-.lp-icon-b {
-  background: linear-gradient(135deg, #2775ca, #27b0ca);
-  margin-left: -10px;
 }
 
 .lp-pool-info {
@@ -356,67 +392,145 @@
 .lp-pool-name {
   font-weight: 600;
   color: #e6f0ff;
-  font-size: 14px;
-}
-
-/* APR column */
-.lp-apr-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.lp-apr-value {
-  font-weight: 700;
-  color: #e6f0ff;
   font-size: 15px;
+  letter-spacing: 0.02em;
 }
 
-.lp-apr-bar {
-  width: 80px;
-  height: 4px;
-  background: #1e2d45;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.lp-apr-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #39d0d8, #9945ff);
-  border-radius: 2px;
-  min-width: 4px;
-}
-
+/* Actions Column & Button Redesigns */
 .lp-td-actions {
   text-align: right;
 }
 
+.lp-actions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Neon Purple Swap Action Button */
+.lp-action-swap-btn {
+  background: rgba(153, 69, 255, 0.12) !important;
+  border: 1px solid rgba(153, 69, 255, 0.35) !important;
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.lp-action-swap-btn img {
+  width: 18px;
+  height: 18px;
+  /* Premium neon purple filter tint */
+  filter: invert(41%) sepia(87%) saturate(1914%) hue-rotate(245deg) brightness(97%) contrast(105%) !important;
+}
+
+.lp-action-swap-btn:hover {
+  background: rgba(153, 69, 255, 0.25) !important;
+  border-color: rgba(153, 69, 255, 0.8) !important;
+  transform: scale(1.08);
+  box-shadow: 0 0 12px rgba(153, 69, 255, 0.45);
+}
+
+.lp-action-swap-btn:active {
+  transform: scale(0.96);
+}
+
+/* Premium Lighter Background Swap Tooltip */
+.lp-swap-tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lp-swap-tooltip-text {
+  visibility: hidden;
+  background-color: #1b263a; /* Lighter background color */
+  color: rgba(153, 69, 255, 0.8); /* Glow accent text color */
+  text-align: center;
+  border: 1px solid rgba(153, 69, 255, 0.5); /* Neon purple border matching swap theme */
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  position: absolute;
+  bottom: 135%; /* Positioned above the button */
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Tooltip Pointy Arrow - Outer Border Arrow */
+.lp-swap-tooltip-text::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 7px;
+  border-style: solid;
+  border-color: rgba(153, 69, 255, 0.5) transparent transparent transparent;
+  z-index: 8;
+}
+
+/* Tooltip Pointy Arrow - Inner Fill Arrow */
+.lp-swap-tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: #1b263a transparent transparent transparent;
+  z-index: 9;
+}
+
+.lp-swap-tooltip-wrapper:hover .lp-swap-tooltip-text {
+  visibility: visible;
+  opacity: 0.7;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Deposit Button Styles */
 .lp-deposit-btn {
   background: transparent;
   border: 1px solid #39d0d8;
   color: #39d0d8;
-  padding: 6px 16px;
+  padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .lp-deposit-btn:hover {
-  filter: brightness(0.9);
+  background: rgba(57, 208, 216, 0.1);
+  border-color: #4edde4;
+  color: #4edde4;
+  box-shadow: 0 0 10px rgba(57, 208, 216, 0.25);
+  transform: scale(1.02);
 }
 
 .lp-deposit-btn:active {
-  filter: brightness(0.7);
+  transform: scale(0.98);
 }
 
-/* ── Footer note ── */
+/* Footer note */
 .lp-note {
   font-size: 12px;
   color: #4a5a70;
   text-align: center;
-  margin-top: 8px;
+  margin-top: 16px;
 }

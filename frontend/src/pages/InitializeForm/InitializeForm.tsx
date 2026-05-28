@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import useProgram from '../../utils/useProgram'
 import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
+import { logActivity } from '../../utils/activity'
 import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, SendTransactionError } from '@solana/web3.js'
 import * as anchor from '@coral-xyz/anchor'
 import {
@@ -11,6 +12,7 @@ import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
 } from '@solana/spl-token'
 import {
   getAuthAddress,
@@ -20,12 +22,37 @@ import {
   getOrcleAccountAddress,
   getPermissionPdaAddress,
 } from '../../utils/pda'
+import {
+  addTokenToRegistry,
+  getTokenRegistry,
+  isValidMintAddress,
+  searchTokenRegistry,
+  type TokenRegistryEntry,
+} from '../../utils/tokenRegistry'
 
 const CREATE_POOL_FEE_RECEIVER = new PublicKey('63EqUEuqiLw9ZvJJsFECg5fN7bM9hBifUEYJFGhJtuCa')
 
 import './InitializeForm.css'
 import showPriceIcon from '../../assets/show-price.svg'
 import copyIcon from '../../assets/copy.svg'
+import plusIcon from '../../assets/plus-circle.svg'
+
+const parseHumanAmountToBigInt = (value: string, decimals: number): bigint => {
+  const normalized = value.trim()
+  if (!Number.isFinite(decimals) || decimals < 0) {
+    throw new Error('Invalid mint decimals')
+  }
+  const parts = normalized.split('.')
+  const wholePart = parts[0] || '0'
+  let fractionPart = parts[1] || ''
+  if (fractionPart.length < decimals) {
+    fractionPart = fractionPart + '0'.repeat(decimals - fractionPart.length)
+  } else if (fractionPart.length > decimals) {
+    fractionPart = fractionPart.slice(0, decimals)
+  }
+  const baseUnits = `${wholePart}${fractionPart}`.replace(/^0+(?=\d)/, '')
+  return BigInt(baseUnits || '0')
+}
 
 export default function InitializeForm() {
   const navigate = useNavigate()
@@ -34,14 +61,14 @@ export default function InitializeForm() {
   const { connection } = useConnection()
   const wallet = useWallet()
 
-  const state = location.state as { mode?: 'permissioned' | 'standard' } || {}
+  const state = (location.state as { mode?: 'permissioned' | 'standard' }) || {}
   const isPermissionedMode = state.mode === 'permissioned'
 
   const [ammConfig, setAmmConfig] = useState('')
   const [mintA, setMintA] = useState('')
   const [mintB, setMintB] = useState('')
-  const [baseAmount, setBaseAmount] = useState('1000')
-  const [quoteAmount, setQuoteAmount] = useState('1000')
+  const [baseAmount, setBaseAmount] = useState('')
+  const [quoteAmount, setQuoteAmount] = useState('')
   const [openTime, setOpenTime] = useState('0')
   const [status, setStatus] = useState<string | null>(null)
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
@@ -53,8 +80,119 @@ export default function InitializeForm() {
   const [creatorFeeOn, setCreatorFeeOn] = useState('0')
   const [configs, setConfigs] = useState<any[]>([])
   const [loadingConfigs, setLoadingConfigs] = useState(false)
-  const baseIsA = true
+  const [tokenRegistry, setTokenRegistry] = useState<TokenRegistryEntry[]>([])
+  const [tokenPickerFor, setTokenPickerFor] = useState<'mintA' | 'mintB' | null>(null)
+  const [tokenQuery, setTokenQuery] = useState('')
+  const [tokenPickerStatus, setTokenPickerStatus] = useState<string | null>(null)
+  const [addingToken, setAddingToken] = useState(false)
+  const [balanceA, setBalanceA] = useState<number>(0)
+  const [balanceB, setBalanceB] = useState<number>(0)
+  const [balanceRefetchTrigger, setBalanceRefetchTrigger] = useState<number>(0)
 
+  const getDatetimeLocalValue = (unixSeconds: string) => {
+    const seconds = Number(unixSeconds)
+    if (!seconds || isNaN(seconds)) return ''
+    const date = new Date(seconds * 1000)
+    const yyyy = date.getFullYear()
+    const mm = String(date.getMonth() + 1).padStart(2, '0')
+    const dd = String(date.getDate()).padStart(2, '0')
+    const hh = String(date.getHours()).padStart(2, '0')
+    const min = String(date.getMinutes()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`
+  }
+
+  const handleDatetimeLocalChange = (datetimeStr: string) => {
+    if (!datetimeStr) {
+      setOpenTime('0')
+      return
+    }
+    const date = new Date(datetimeStr)
+    const seconds = Math.floor(date.getTime() / 1000)
+    if (!isNaN(seconds) && seconds > 0) {
+      setOpenTime(seconds.toString())
+    }
+  }
+
+  useEffect(() => {
+    if (!wallet.publicKey || !connection) {
+      setBalanceA(0)
+      setBalanceB(0)
+      return
+    }
+
+    let active = true
+
+    const fetchBalances = async () => {
+      let balA = 0
+      let balB = 0
+
+      // Fetch Balance A
+      if (mintA.trim()) {
+        try {
+          const pubkeyA = new PublicKey(mintA.trim())
+          const isSol = mintA.trim() === 'So11111111111111111111111111111111111111112'
+          if (isSol) {
+            const rawBal = await connection.getBalance(wallet.publicKey!)
+            balA = rawBal / 1e9
+          } else {
+            const tokenProgram = await detectTokenProgram(pubkeyA).catch(() => TOKEN_PROGRAM_ID)
+            const ata = getAssociatedTokenAddressSync(pubkeyA, wallet.publicKey!, true, tokenProgram)
+            const accountBal = await connection.getTokenAccountBalance(ata).catch(() => null)
+            if (accountBal && accountBal.value.uiAmount != null) {
+              balA = accountBal.value.uiAmount
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching balance A:', e)
+        }
+      }
+
+      // Fetch Balance B
+      if (mintB.trim()) {
+        try {
+          const pubkeyB = new PublicKey(mintB.trim())
+          const isSol = mintB.trim() === 'So11111111111111111111111111111111111111112'
+          if (isSol) {
+            const rawBal = await connection.getBalance(wallet.publicKey!)
+            balB = rawBal / 1e9
+          } else {
+            const tokenProgram = await detectTokenProgram(pubkeyB).catch(() => TOKEN_PROGRAM_ID)
+            const ata = getAssociatedTokenAddressSync(pubkeyB, wallet.publicKey!, true, tokenProgram)
+            const accountBal = await connection.getTokenAccountBalance(ata).catch(() => null)
+            if (accountBal && accountBal.value.uiAmount != null) {
+              balB = accountBal.value.uiAmount
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching balance B:', e)
+        }
+      }
+
+      if (active) {
+        setBalanceA(balA)
+        setBalanceB(balB)
+      }
+    }
+
+    fetchBalances()
+    const interval = setInterval(fetchBalances, 10000)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [wallet.publicKey, mintA, mintB, connection, balanceRefetchTrigger])
+
+  // validation: if inputs exceed user balances, mark invalid similar to DepositForm
+  const parsedBaseAmount = Number((baseAmount || '0').toString().replace(/,/g, '')) || 0
+  const parsedQuoteAmount = Number((quoteAmount || '0').toString().replace(/,/g, '')) || 0
+  const isInsufficientBase = !!wallet.publicKey && parsedBaseAmount > (balanceA || 0)
+  const isInsufficientQuote = !!wallet.publicKey && parsedQuoteAmount > (balanceB || 0)
+  const canSubmitInitialize = !busy && !!wallet.publicKey && !isInsufficientBase && !isInsufficientQuote
+
+  const tokenA = useMemo(() => tokenRegistry.find(entry => entry.mint === mintA.trim()), [mintA, tokenRegistry])
+  const tokenB = useMemo(() => tokenRegistry.find(entry => entry.mint === mintB.trim()), [mintB, tokenRegistry])
+
+  const baseIsA = true
   const TEST_MODE = false
 
   async function detectTokenProgram(mint: PublicKey) {
@@ -66,8 +204,20 @@ export default function InitializeForm() {
   }
 
   async function showSendErrorDetails(err: any, hintAddress?: PublicKey) {
+    const errorMessage = (err?.message || String(err) || '').toString()
+    console.error('[InitializeForm] initialize failed', {
+      error: err,
+      message: errorMessage,
+      wallet: wallet.publicKey?.toBase58?.() ?? null,
+      mintA: mintA || null,
+      mintB: mintB || null,
+      baseAmount,
+      quoteAmount,
+      isPermissionedMode,
+      hintAddress: hintAddress?.toBase58?.() ?? null,
+    })
     try {
-      const rawMsg = (err?.message || String(err) || '').toString().toLowerCase()
+      const rawMsg = errorMessage.toLowerCase()
       if (rawMsg.includes('already') && rawMsg.includes('processed')) {
         if (hintAddress) {
           try {
@@ -78,16 +228,22 @@ export default function InitializeForm() {
               setStatus('Transaction executed successfully.')
               return
             }
-          } catch (e) { }
+          } catch (e) {
+            console.error(e)
+          }
         }
         setStatus('Transaction appears already processed; it likely executed successfully.')
         return
       }
-    } catch (e) { }
+    } catch (e) {
+      console.error(e)
+    }
+
     if (err instanceof SendTransactionError || err?.name === 'SendTransactionError') {
       try {
         const logs = await err.getLogs(connection).catch(() => null)
         if (logs && logs.length) {
+          console.error('[InitializeForm] simulation logs', logs)
           setErrorDetails(logs.join('\n'))
           setStatus('Simulation failed. Click "Details" to view logs.')
           return
@@ -97,19 +253,27 @@ export default function InitializeForm() {
           const tx = await (connection as any).getTransaction(sig, { maxSupportedTransactionVersion: 0 }).catch(() => null)
           const txLogs = (tx as any)?.meta?.logMessages
           if (txLogs && txLogs.length) {
+            console.error('[InitializeForm] rpc transaction logs', txLogs)
             setErrorDetails(txLogs.join('\n'))
             setStatus('Transaction processed. Click "Details" to view RPC logs.')
             return
           }
         }
+        console.error('[InitializeForm] simulation failed without logs', errorMessage)
         setStatus('Simulation failed: ' + (err.message || String(err)))
       } catch (inner) {
+        console.error('[InitializeForm] error while collecting logs', inner)
         setStatus('Simulation failed: ' + (err.message || String(err)))
       }
     } else {
+      console.error('[InitializeForm] non-transaction error', err)
       setStatus('Error: ' + (err.message || String(err)))
     }
   }
+
+  useEffect(() => {
+    setTokenRegistry(getTokenRegistry())
+  }, [])
 
   useEffect(() => {
     const fetchConfigs = async () => {
@@ -119,7 +283,7 @@ export default function InitializeForm() {
         const all = await (program.account as any).ammConfig.all()
         const sorted = all.map((a: any) => ({
           ...a.account,
-          publicKey: a.publicKey
+          publicKey: a.publicKey,
         })).sort((a: { index: number }, b: { index: number }) => a.index - b.index)
         setConfigs(sorted)
         if (sorted.length > 0 && !ammConfig) {
@@ -152,6 +316,75 @@ export default function InitializeForm() {
     checkWhitelist()
   }, [program, wallet.publicKey, isPermissionedMode])
 
+  useEffect(() => {
+    if (!tokenPickerFor) {
+      setTokenPickerStatus(null)
+      return
+    }
+    setTokenQuery(tokenPickerFor === 'mintA' ? mintA : mintB)
+    setTokenPickerStatus(null)
+  }, [tokenPickerFor, mintA, mintB])
+
+  const tokenSearchResults = useMemo(() => searchTokenRegistry(tokenQuery, tokenRegistry), [tokenQuery, tokenRegistry])
+  const canAddToken = isValidMintAddress(tokenQuery) && !tokenRegistry.some(token => token.mint === tokenQuery.trim())
+
+  function closeTokenPicker() {
+    setTokenPickerFor(null)
+    setTokenQuery('')
+    setTokenPickerStatus(null)
+    setAddingToken(false)
+  }
+
+  function openTokenPicker(field: 'mintA' | 'mintB') {
+    setTokenPickerFor(field)
+    setTokenQuery(field === 'mintA' ? mintA : mintB)
+    setTokenPickerStatus(null)
+  }
+
+  function applyTokenMint(mint: string) {
+    if (tokenPickerFor === 'mintA') setMintA(mint)
+    if (tokenPickerFor === 'mintB') setMintB(mint)
+    closeTokenPicker()
+  }
+
+  async function handleAddToken() {
+    if (!canAddToken) return
+    setAddingToken(true)
+    setTokenPickerStatus(null)
+    try {
+      const entry = await addTokenToRegistry(connection, tokenQuery)
+      setTokenRegistry(getTokenRegistry())
+      applyTokenMint(entry.mint)
+    } catch (error: any) {
+      setTokenPickerStatus(error?.message || 'Failed to add token')
+    } finally {
+      setAddingToken(false)
+    }
+  }
+
+  async function ensureAssociatedTokenAccount(owner: PublicKey, mint: PublicKey, tokenProgram: PublicKey) {
+    const ata = getAssociatedTokenAddressSync(mint, owner, false, tokenProgram)
+    const existing = await connection.getAccountInfo(ata)
+    if (existing) return ata
+
+    const tx = new anchor.web3.Transaction().add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        wallet.publicKey!,
+        ata,
+        owner,
+        mint,
+        tokenProgram,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      ),
+    )
+    tx.feePayer = wallet.publicKey!
+    const latest = await connection.getLatestBlockhash()
+    tx.recentBlockhash = latest.blockhash
+    await wallet.sendTransaction(tx, connection)
+    return ata
+  }
+
+
   async function handleInitialize() {
     if (!program) return setStatus('Program not ready')
     if (!wallet.publicKey) return setStatus('Connect wallet')
@@ -181,16 +414,16 @@ export default function InitializeForm() {
 
       const [poolState] = await getPoolAddress(amm, token0Mint, token1Mint, programId)
       const [lpMint] = await getPoolLpMintAddress(poolState, programId)
+      const lpTokenProgram = await detectTokenProgram(lpMint).catch(() => TOKEN_PROGRAM_ID)
       const [token0Vault] = await getPoolVaultAddress(poolState, token0Mint, programId)
       const [token1Vault] = await getPoolVaultAddress(poolState, token1Mint, programId)
       const [observationState] = await getOrcleAccountAddress(poolState, programId)
 
-      const mint0Info = await getMint(connection, mA)
-      const mint1Info = await getMint(connection, mB)
-      const mult0 = BigInt(10) ** BigInt(mint0Info.decimals)
-      const mult1 = BigInt(10) ** BigInt(mint1Info.decimals)
-      const amountForMintA_units = BigInt((baseIsA ? baseAmount : quoteAmount) || '0') * mult0
-      const amountForMintB_units = BigInt((baseIsA ? quoteAmount : baseAmount) || '0') * mult1
+      const mint0Info = await getMint(connection, mA, 'confirmed', token0Program)
+      const mint1Info = await getMint(connection, mB, 'confirmed', token1Program)
+
+      const amountForMintA_units = parseHumanAmountToBigInt((baseIsA ? baseAmount : quoteAmount) || '0', mint0Info.decimals)
+      const amountForMintB_units = parseHumanAmountToBigInt((baseIsA ? quoteAmount : baseAmount) || '0', mint1Info.decimals)
       const amountA_bn = new anchor.BN(amountForMintA_units.toString())
       const amountB_bn = new anchor.BN(amountForMintB_units.toString())
 
@@ -206,6 +439,9 @@ export default function InitializeForm() {
       const openTimeBn = new anchor.BN(openTime)
 
       const [permissionPda] = await getPermissionPdaAddress(creator, programId)
+
+      await ensureAssociatedTokenAccount(creator, token0Mint, token0Program)
+      await ensureAssociatedTokenAccount(creator, token1Mint, token1Program)
 
       const accounts: any = {
         ammConfig: amm,
@@ -231,20 +467,20 @@ export default function InitializeForm() {
         accounts.creator = creator
         accounts.payerToken0 = getAssociatedTokenAddressSync(token0Mint, creator, false, token0Program)
         accounts.payerToken1 = getAssociatedTokenAddressSync(token1Mint, creator, false, token1Program)
-        accounts.payerLpToken = getAssociatedTokenAddressSync(lpMint, creator, false, TOKEN_PROGRAM_ID)
+        accounts.payerLpToken = getAssociatedTokenAddressSync(lpMint, creator, false, lpTokenProgram)
         accounts.permission = permissionPda
       } else {
         accounts.creator = creator
         accounts.creatorToken0 = getAssociatedTokenAddressSync(token0Mint, creator, false, token0Program)
         accounts.creatorToken1 = getAssociatedTokenAddressSync(token1Mint, creator, false, token1Program)
-        accounts.creatorLpToken = getAssociatedTokenAddressSync(lpMint, creator, false, TOKEN_PROGRAM_ID)
+        accounts.creatorLpToken = getAssociatedTokenAddressSync(lpMint, creator, false, lpTokenProgram)
       }
 
       if (TEST_MODE) {
         await new Promise(resolve => setTimeout(resolve, 1500))
         setTxResult({
           sig: 'TEST_' + Math.random().toString(36).substring(2, 50).toUpperCase(),
-          explorer: '#'
+          explorer: '#',
         })
         setStatus(null)
         setBusy(false)
@@ -273,6 +509,14 @@ export default function InitializeForm() {
         const sentSig = await connection.sendRawTransaction(raw)
         await connection.confirmTransaction(sentSig)
         setTxResult({ sig: sentSig, explorer: 'https://explorer.solana.com/tx/' + sentSig + '?cluster=devnet' })
+        logActivity({
+          actionType: 'Pool Creation',
+          poolAddress: poolState.toBase58(),
+          tokenPair: `${tokenA?.symbol || 'Unknown'}/${tokenB?.symbol || 'Unknown'}`,
+          signature: sentSig,
+          status: 'success',
+        })
+        setBalanceRefetchTrigger(t => t + 1)
         setStatus(null)
         setBusy(false)
         return
@@ -289,6 +533,14 @@ export default function InitializeForm() {
           sig = await (program as any).methods.initialize(baseInitAmount0, baseInitAmount1, openTimeBn).accounts(accounts).rpc()
         }
         setTxResult({ sig, explorer: 'https://explorer.solana.com/tx/' + sig + '?cluster=devnet' })
+        logActivity({
+          actionType: 'Pool Creation',
+          poolAddress: poolState.toBase58(),
+          tokenPair: `${tokenA?.symbol || 'Unknown'}/${tokenB?.symbol || 'Unknown'}`,
+          signature: sig,
+          status: 'success',
+        })
+        setBalanceRefetchTrigger(t => t + 1)
         setStatus(null)
         setBusy(false)
         return
@@ -313,11 +565,34 @@ export default function InitializeForm() {
               This tool is for advanced users. For detailed instructions, read the guide for <a className="initialize-link" href="https://docs.raydium.io/raydium/build/developer-guides/clmm/creating-a-pool#creating-a-pool" target="_blank" rel="noreferrer">CLMM</a> or <span className="initialize-link">Standard</span> pools.
             </div>
           </aside>
+
+          <aside className="initialize-balances-card">
+            <div className="initialize-balances-card__title">
+              <svg className="wallet-icon" viewBox="0 0 24 24" width="14" height="14" style={{ marginRight: '6px' }}>
+                <path fill="currentColor" d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2-.9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+              </svg>
+              <span>Your Balances</span>
+            </div>
+            <div className="initialize-balances-card__list">
+              <div className="initialize-balances-card__item">
+                <span className="initialize-balances-card__item-label">Base Token:</span>
+                <span className="initialize-balances-card__item-value">
+                  {tokenA ? `${balanceA} ${tokenA.symbol.slice(0, 4).toUpperCase()}` : 'Not Selected'}
+                </span>
+              </div>
+              <div className="initialize-balances-card__item">
+                <span className="initialize-balances-card__item-label">Quote Token:</span>
+                <span className="initialize-balances-card__item-value">
+                  {tokenB ? `${balanceB} ${tokenB.symbol.slice(0, 4).toUpperCase()}` : 'Not Selected'}
+                </span>
+              </div>
+            </div>
+          </aside>
         </div>
 
         <div className="initialize-main">
           <h2 className="initialize-page-title">
-            {isPermissionedMode ? 'Initialize CPMM Pool (with Creator Fees)' : 'Initialize CPMM Pool'}
+            {isPermissionedMode ? 'Initialize CPMM Pool (Creator Fees)' : 'Initialize CPMM Pool'}
           </h2>
           <div className="initialize-page__content">
             <div className="initialize-page__form">
@@ -366,74 +641,166 @@ export default function InitializeForm() {
                     />
                   )}
 
+                  <div className="dex-form-container-card">
+                    {/* Initial Liquidity Section */}
+                    <div className="dex-liquidity-group">
+                      <h4 className="dex-group-title">Initial liquidity</h4>
 
-                  <div className="initialize-card">
-                    <div className="initialize-card__header">
-                      <div className="initialize-subtitle">Initial liquidity</div>
-                    </div>
-                    <div className="initialize-field">
-                      <label className="initialize-label">Initialize config</label>
-                      <select
-                        className="initialize-input"
-                        value={ammConfig}
-                        onChange={e => setAmmConfig(e.target.value)}
-                        disabled={loadingConfigs}
-                      >
-                        {loadingConfigs && <option>Loading configs...</option>}
-                        {configs.map(c => (
-                          <option key={c.publicKey.toBase58()} value={c.publicKey.toBase58()}>
-                            Index: {c.index} | Trade: {(c.tradeFeeRate / 10000).toFixed(2)}%
-                            {isPermissionedMode ? ` | Creator: ${(c.creatorFeeRate / 10000).toFixed(2)}%` : ''}
-                            | {c.publicKey.toBase58().slice(0, 8)}...
-                          </option>
-                        ))}
-                      </select>
-                      {ammConfig && (
-                        <div className="initialize-config-address">
-                          <span>Selected Config: {ammConfig.slice(0, 8)}...{ammConfig.slice(-8)}</span>
-                          <button
-                            className="initialize-copy-btn"
-                            type="button"
-                            onClick={() => navigator.clipboard.writeText(ammConfig)}
-                            title="Copy Config Address"
-                          >
-                            <img src={copyIcon} alt="copy" />
-                          </button>
+                      {/* Base Token Card */}
+                      <div className={`dex-liquidity-card ${isInsufficientBase ? 'dex-liquidity-card--invalid' : ''}`}>
+                        <div className="dex-liquidity-card__top">
+                          <span className="dex-liquidity-card__label">Base token</span>
+                          <div className="dex-liquidity-card__balance">
+                            <svg className="wallet-icon" viewBox="0 0 24 24" width="12" height="12">
+                              <path fill="currentColor" d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2-.9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+                            </svg>
+                            <span className={`dex-liquidity-card__balance-value ${isInsufficientBase ? 'dex-liquidity-card__balance-value--invalid' : ''}`}>{balanceA}</span>
+                            <button type="button" className="balance-pill" onClick={() => setBaseAmount((balanceA * 0.5).toString())}>50%</button>
+                            <button type="button" className="balance-pill" onClick={() => setBaseAmount(balanceA.toString())}>Max</button>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="initialize-liquidity">
-                      <div className="initialize-liquidity__section">
-                        <div className="initialize-liquidity__header">
-                          <span>Base token</span>
-                        </div>
-                        <div className="initialize-field">
-                          <label className="initialize-label">Base token mint</label>
-                          <input className="initialize-input" value={mintA} onChange={e => setMintA(e.target.value)} placeholder="Mint A pubkey" />
-                        </div>
-                        <div className="initialize-field">
-                          <label className="initialize-label">Base token amount</label>
-                          <input className="initialize-input" value={baseAmount} onChange={e => setBaseAmount(e.target.value)} />
-                        </div>
-                      </div>
-                      <div className="initialize-divider" aria-hidden="true">+</div>
-                      <div className="initialize-liquidity__section">
-                        <div className="initialize-liquidity__header">
-                          <span>Quote token</span>
-                        </div>
-                        <div className="initialize-field">
-                          <label className="initialize-label">Quote token mint</label>
-                          <input className="initialize-input" value={mintB} onChange={e => setMintB(e.target.value)} placeholder="Mint B pubkey" />
-                        </div>
-                        <div className="initialize-field">
-                          <label className="initialize-label">Quote token amount</label>
-                          <input className="initialize-input" value={quoteAmount} onChange={e => setQuoteAmount(e.target.value)} />
+                        <div className="dex-liquidity-card__row">
+                          {tokenA ? (
+                            <div className="dex-token-selected-container">
+                              <button type="button" className="dex-token-selector selected" onClick={() => openTokenPicker('mintA')} style={{ ['--token-accent' as any]: tokenA.color }}>
+                                <div className="dex-token-icon" style={{ backgroundColor: tokenA.color }}>
+                                  {tokenA.symbol.slice(0, 2).toUpperCase()}
+                                </div>
+                                <span className="dex-token-symbol">{tokenA.symbol.slice(0, 4).toUpperCase()}</span>
+                                <svg className="dex-caret-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5H7z" /></svg>
+                              </button>
+                              <div className="dex-token-mint-subscript">
+                                <span className="dex-mint-address">{tokenA.mint}</span>
+                                <button
+                                  type="button"
+                                  className="dex-copy-mint-btn"
+                                  title="Copy address"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(tokenA.mint);
+                                  }}
+                                >
+                                  <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button type="button" className="dex-token-selector empty" onClick={() => openTokenPicker('mintA')}>
+                              <span className="dex-token-symbol">Select Token</span>
+                              <svg className="dex-caret-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5H7z" /></svg>
+                            </button>
+                          )}
+                          <div className="dex-amount-container">
+                            <input
+                              type="text"
+                              className="dex-amount-input"
+                              value={baseAmount}
+                              onChange={e => setBaseAmount(e.target.value)}
+                              placeholder="0.00"
+                            />
+                            <span className="dex-amount-usd">~$0</span>
+                          </div>
                         </div>
                       </div>
+
+                      {/* Divider Plus Icon */}
+                      <div className="dex-liquidity-divider">
+                        <div className="dex-liquidity-divider__circle">
+                          <img src={plusIcon} alt="plus" className="dex-plus-icon" />
+                        </div>
+                      </div>
+
+                      {/* Quote Token Card */}
+                      <div className={`dex-liquidity-card ${isInsufficientQuote ? 'dex-liquidity-card--invalid' : ''}`}>
+                        <div className="dex-liquidity-card__top">
+                          <span className="dex-liquidity-card__label">Quote token</span>
+                          <div className="dex-liquidity-card__balance">
+                            <svg className="wallet-icon" viewBox="0 0 24 24" width="12" height="12">
+                              <path fill="currentColor" d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2-.9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+                            </svg>
+                            <span className={`dex-liquidity-card__balance-value ${isInsufficientQuote ? 'dex-liquidity-card__balance-value--invalid' : ''}`}>{balanceB}</span>
+                            <button type="button" className="balance-pill" onClick={() => setQuoteAmount((balanceB * 0.5).toString())}>50%</button>
+                            <button type="button" className="balance-pill" onClick={() => setQuoteAmount(balanceB.toString())}>Max</button>
+                          </div>
+                        </div>
+                        <div className="dex-liquidity-card__row">
+                          {tokenB ? (
+                            <div className="dex-token-selected-container">
+                              <button type="button" className="dex-token-selector selected" onClick={() => openTokenPicker('mintB')} style={{ ['--token-accent' as any]: tokenB.color }}>
+                                <div className="dex-token-icon" style={{ backgroundColor: tokenB.color }}>
+                                  {tokenB.symbol.slice(0, 2).toUpperCase()}
+                                </div>
+                                <span className="dex-token-symbol">{tokenB.symbol.slice(0, 4).toUpperCase()}</span>
+                                <svg className="dex-caret-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5H7z" /></svg>
+                              </button>
+                              <div className="dex-token-mint-subscript">
+                                <span className="dex-mint-address">{tokenB.mint}</span>
+                                <button
+                                  type="button"
+                                  className="dex-copy-mint-btn"
+                                  title="Copy address"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(tokenB.mint);
+                                  }}
+                                >
+                                  <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button type="button" className="dex-token-selector empty" onClick={() => openTokenPicker('mintB')}>
+                              <span className="dex-token-symbol">Select Token</span>
+                              <svg className="dex-caret-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5H7z" /></svg>
+                            </button>
+                          )}
+                          <div className="dex-amount-container">
+                            <input
+                              type="text"
+                              className="dex-amount-input"
+                              value={quoteAmount}
+                              onChange={e => setQuoteAmount(e.target.value)}
+                              placeholder="0.00"
+                            />
+                            <span className="dex-amount-usd">~$0</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="initialize-field">
-                      <label className="initialize-label">Initial price</label>
-                      <div className="initialize-price" title="Initial price">
+
+                    {/* Fee Tier Selector (Placed below Base/Quote Tokens) */}
+                    <div className="dex-form-card">
+                      <label className="dex-form-card__label">Fee Tier</label>
+                      <div className="dex-select-wrapper">
+                        <select
+                          className="dex-select-input"
+                          value={ammConfig}
+                          onChange={e => setAmmConfig(e.target.value)}
+                          disabled={loadingConfigs}
+                        >
+                          {loadingConfigs && <option>Loading...</option>}
+                          {configs.map(c => (
+                            <option key={c.publicKey.toBase58()} value={c.publicKey.toBase58()}>
+                              {(c.tradeFeeRate / 10000).toFixed(2)}%
+                              {isPermissionedMode ? ` | Creator ${(c.creatorFeeRate / 10000).toFixed(2)}%` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <svg className="dex-select-caret" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5H7z" /></svg>
+                      </div>
+                    </div>
+
+                    {/* Price Selector */}
+                    <div className="dex-form-card">
+                      <div className="dex-form-card__header-row">
+                        <label className="dex-form-card__label">Initial Price</label>
+                        <button type="button" className="dex-price-toggle-btn" onClick={() => setShowInversePrice(s => !s)}>
+                          <img src={showPriceIcon} alt="toggle" className="dex-price-toggle-icon" />
+                          <span>Show {showInversePrice ? 'token1/token0' : 'token0/token1'}</span>
+                        </button>
+                      </div>
+
+                      <div className="dex-price-display-box">
                         {(() => {
                           const aBase = Number(baseAmount || '0')
                           const aQuote = Number(quoteAmount || '0')
@@ -447,45 +814,136 @@ export default function InitializeForm() {
                               const token0 = token0First ? amountA : amountB
                               const token1 = token0First ? amountB : amountA
                               const price = showInversePrice ? (token0 / token1) : (token1 / token0)
-                              return <span className="initialize-price__text">{price.toString()}</span>
+                              return <span className="dex-price-val">{price.toString()}</span>
                             }
                           } catch (e) {
                             if (isFinite(aBase) && isFinite(aQuote) && aBase > 0 && aQuote > 0) {
                               const price = showInversePrice ? (aBase / aQuote) : (aQuote / aBase)
-                              return <span className="initialize-price__text">{price.toString()}</span>
+                              return <span className="dex-price-val">{price.toString()}</span>
                             }
                           }
-                          return <span className="initialize-price__text">-</span>
+                          return <span className="dex-price-val">-</span>
                         })()}
-                        <span className="initialize-price__suffix">{showInversePrice ? 'token0/token1' : 'token1/token0'}</span>
+                        <span className="dex-price-suffix">
+                          {(() => {
+                            const symbolA = tokenA?.symbol || 'token0'
+                            const symbolB = tokenB?.symbol || 'token1'
+                            try {
+                              const mA = new PublicKey(mintA)
+                              const mB = new PublicKey(mintB)
+                              const token0First = Buffer.compare(mA.toBuffer(), mB.toBuffer()) < 0
+                              const s0 = token0First ? symbolA : symbolB
+                              const s1 = token0First ? symbolB : symbolA
+                              return showInversePrice ? `${s0}/${s1}` : `${s1}/${s0}`
+                            } catch (e) {
+                              return showInversePrice ? `${symbolA}/${symbolB}` : `${symbolB}/${symbolA}`
+                            }
+                          })()}
+                        </span>
                       </div>
-                      <div className="initialize-price-toggle">
-                        <button className="initialize-price-toggle__btn" onClick={() => setShowInversePrice(s => !s)}>
-                          <img src={showPriceIcon} alt="toggle" className="initialize-price-toggle__icon" />
-                        </button>
-                        <span className="initialize-price-toggle__text">{showInversePrice ? 'Show token1/token0' : 'Show token0/token1'} Initial price</span>
-                      </div>
-                    </div>
-                    <div className="initialize-field initialize-field--compact">
-                      <label className="initialize-label">Start time (unix)</label>
-                      <input className="initialize-input" value={openTime} onChange={e => setOpenTime(e.target.value)} placeholder="0" />
+
+                      {(() => {
+                        const aBase = Number(baseAmount || '0')
+                        const aQuote = Number(quoteAmount || '0')
+                        if (aBase > 0 && aQuote > 0) {
+                          const symbolA = tokenA?.symbol || 'Token A'
+                          const symbolB = tokenB?.symbol || 'Token B'
+                          const priceVal = (aQuote / aBase)
+                          return (
+                            <div className="dex-price-current-row">
+                              <span>Current price: 1 {symbolA} ≈ {priceVal.toFixed(6)} {symbolB}</span>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
 
+                    {/* Start Time Selector */}
+                    <div className="dex-form-card">
+                      <label className="dex-form-card__label">Start Time</label>
+                      <div className="dex-tabs">
+                        <button
+                          type="button"
+                          className={`dex-tab-btn ${openTime === '0' ? 'active' : ''}`}
+                          onClick={() => setOpenTime('0')}
+                        >
+                          Start Now
+                        </button>
+                        <button
+                          type="button"
+                          className={`dex-tab-btn ${openTime !== '0' ? 'active' : ''}`}
+                          onClick={() => {
+                            if (openTime === '0') {
+                              setOpenTime(Math.floor(Date.now() / 1000).toString())
+                            }
+                          }}
+                        >
+                          Custom
+                        </button>
+                      </div>
+
+                      {openTime !== '0' && (
+                        <div className="dex-time-picker-panel">
+                          <input
+                            type="datetime-local"
+                            className="dex-time-picker-input"
+                            value={getDatetimeLocalValue(openTime)}
+                            onChange={e => handleDatetimeLocalChange(e.target.value)}
+                          />
+                          <div className="dex-time-picker-preview">
+                            {(() => {
+                              try {
+                                const ms = Number(openTime) * 1000
+                                if (!isNaN(ms) && ms > 0) {
+                                  const date = new Date(ms)
+                                  return (
+                                    <span className="dex-time-preview-text">
+                                      {date.getUTCFullYear()}/
+                                      {String(date.getUTCMonth() + 1).padStart(2, '0')}/
+                                      {String(date.getUTCDate()).padStart(2, '0')} {' '}
+                                      {String(date.getUTCHours()).padStart(2, '0')}:
+                                      {String(date.getUTCMinutes()).padStart(2, '0')} (UTC)
+                                    </span>
+                                  )
+                                }
+                              } catch (e) { }
+                              return <span className="dex-time-preview-text error">Invalid Timestamp</span>
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Creator Fee Mode */}
                     {isPermissionedMode && isWhitelisted && (
-                      <div className="initialize-field">
-                        <label className="initialize-label">Creator Fee Mode (Whitelisted)</label>
-                        <select className="initialize-input" value={creatorFeeOn} onChange={e => setCreatorFeeOn(e.target.value)}>
-                          <option value="0">Both Tokens</option>
-                          <option value="1">Only Token 0</option>
-                          <option value="2">Only Token 1</option>
-                        </select>
+                      <div className="dex-form-card">
+                        <label className="dex-form-card__label">Creator Fee Mode (Whitelisted)</label>
+                        <div className="dex-select-wrapper">
+                          <select className="dex-select-input" value={creatorFeeOn} onChange={e => setCreatorFeeOn(e.target.value)}>
+                            <option value="0">Both Tokens</option>
+                            <option value="1">Only Token 0</option>
+                            <option value="2">Only Token 1</option>
+                          </select>
+                          <svg className="dex-select-caret" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5H7z" /></svg>
+                        </div>
                       </div>
                     )}
 
                     <div className="initialize-actions">
-                      <button type="button" className="initialize-btn initialize-btn--primary" onClick={handleInitialize} disabled={busy}>
-                        {busy ? 'Processing...' : 'Initialize Pool'}
+                      <button
+                        type="button"
+                        className="initialize-btn initialize-btn--primary dex-submit-btn"
+                        onClick={handleInitialize}
+                        disabled={!canSubmitInitialize}
+                      >
+                        {busy ? 'Processing...' : !wallet.publicKey ? 'Connect Wallet' : (isInsufficientBase || isInsufficientQuote) ? 'Insufficient Balance' : 'Initialize Pool'}
                       </button>
+                    </div>
+
+                    <div className="dex-creation-fee-notice">
+                      <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" /></svg>
+                      <span>Note: A pool creation fee of ~0.2 SOL is required.</span>
                     </div>
                   </div>
                 </>
@@ -494,6 +952,128 @@ export default function InitializeForm() {
           </div>
         </div>
       </div>
+
+      {/* Token Selector Modal Overlay */}
+      {tokenPickerFor && (
+        <div className="dex-overlay animate-fade-in" onClick={closeTokenPicker}>
+          <div className="dex-modal animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="dex-modal__header">
+              <h3 className="dex-modal__title">Select a token</h3>
+              <button type="button" className="dex-modal__close-btn" onClick={closeTokenPicker}>
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                  <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Search Input Box */}
+            <div className="dex-modal__search-wrapper">
+              <svg className="dex-search-icon" viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+              </svg>
+              <input
+                className="dex-modal__search-input"
+                value={tokenQuery}
+                onChange={e => setTokenQuery(e.target.value)}
+                placeholder="Search by token or paste address"
+                autoFocus
+              />
+            </div>
+
+            {tokenPickerStatus && (
+              <div className="dex-picker-status-error">
+                {tokenPickerStatus}
+              </div>
+            )}
+
+
+            {/* Main Token List */}
+            <div className="dex-modal__list-header">
+              <span>Token</span>
+              <span>Balance/Address</span>
+            </div>
+
+            <div className="dex-modal__list scrollable">
+              {tokenSearchResults.length > 0 ? (
+                tokenSearchResults.map(token => (
+                  <div
+                    key={token.mint}
+                    className="dex-token-row"
+                    onClick={() => applyTokenMint(token.mint)}
+                    style={{ ['--token-accent' as any]: token.color }}
+                  >
+                    <div className="dex-token-row__left">
+                      <div className="dex-token-row__badge" style={{ backgroundColor: token.color }}>
+                        {token.symbol.slice(0, 1)}
+                      </div>
+                      <div className="dex-token-row__details">
+                        <strong className="dex-token-row__symbol">{token.symbol}</strong>
+                        <span className="dex-token-row__name">{token.name}</span>
+                      </div>
+                    </div>
+                    <div className="dex-token-row__right" onClick={e => e.stopPropagation()}>
+                      <span className="dex-token-row__balance">0</span>
+                      <div className="dex-token-row__address-block">
+                        <span className="dex-token-row__address-text">
+                          {token.mint.slice(0, 6)}...{token.mint.slice(-6)}
+                        </span>
+                        {/* Copy button */}
+                        <button
+                          type="button"
+                          className="dex-action-btn"
+                          title="Copy address"
+                          onClick={() => navigator.clipboard.writeText(token.mint)}
+                        >
+                          <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />
+                        </button>
+                        {/* Link button */}
+                        <a
+                          href={`https://explorer.solana.com/address/${token.mint}?cluster=devnet`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="dex-action-btn"
+                          title="View on Explorer"
+                        >
+                          <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" /></svg>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="dex-token-empty-state">
+                  <span>No tokens found in the local registry.</span>
+                </div>
+              )}
+
+              {/* Dynamic import button if address is valid and missing */}
+              {canAddToken && (
+                <div className="dex-import-card">
+                  <div className="dex-import-card__body">
+                    <span className="dex-import-card__title">Import Custom Token</span>
+                    <p className="dex-import-card__desc">This token is not in the local list, but it appears to be a valid Solana address. You can import it on-chain.</p>
+                    <span className="dex-import-card__address">{tokenQuery}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="initialize-btn initialize-btn--primary dex-import-btn"
+                    onClick={handleAddToken}
+                    disabled={addingToken}
+                  >
+                    {addingToken ? 'Importing...' : 'Import from On-Chain'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="dex-modal__help-card">
+              <span>Can't find the token you're looking for? Try entering the mint address or check token list settings.</span>
+            </div>
+
+
+          </div>
+        </div>
+      )}
     </div>
   )
 }

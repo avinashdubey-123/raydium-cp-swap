@@ -17,6 +17,7 @@ import { getAuthAddress, getPoolLpMintAddress, getPoolVaultAddress } from '../..
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import { RoundDirection } from '../../utils/curve/calculator'
 import { computeTransferFeeForPre } from '../../utils/curve/fee'
+import { logActivity } from '../../utils/activity'
 import './WithdrawForm.css'
 
 export type WithdrawState = {
@@ -185,6 +186,13 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 title: 'Withdraw Submitted',
                 message: `Tx: ${tx.slice(0, 8)}...`,
                 signature: tx,
+            })
+            logActivity({
+                actionType: 'Withdraw',
+                poolAddress: state.poolPda,
+                tokenPair: `${token0Symbol}/${token1Symbol}`,
+                signature: tx,
+                status: 'success',
             })
         } catch (err: any) {
             const message = err?.message || String(err)

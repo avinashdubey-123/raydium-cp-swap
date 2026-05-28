@@ -9,11 +9,23 @@ import { useConnection } from '@solana/wallet-adapter-react'
 import { getPoolAddress, getPoolVaultAddress } from '../../utils/pda'
 import { useEffect, useState, useRef } from 'react'
 import copyIcon from '../../assets/copy.svg'
+import swapIcon from '../../assets/swap.svg'
+import { getShortTokenName, getPoolDisplayName } from '../../utils/token'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
 
+// Deterministic pleasing HSL color generation based on token symbol
+function getTokenColor(symbol: string): string {
+  let hash = 0
+  for (let i = 0; i < symbol.length; i++) {
+    hash = symbol.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash) % 360
+  // Saturation: 65% for vibrancy, Lightness: 40% for beautiful colors on dark backgrounds
+  return `hsl(${hue}, 65%, 40%)`
+}
 
-function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
+function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; ammConfigs: any[] }) {
   const token0 = pool.token0 ? new PublicKey(pool.token0) : undefined
   const token1 = pool.token1 ? new PublicKey(pool.token1) : undefined
   let sortedToken0 = token0
@@ -54,22 +66,52 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
         setRpcVault0(b0?.value?.uiAmount ?? null)
         setRpcVault1(b1?.value?.uiAmount ?? null)
       } catch (err: any) {
-        console.log(err)
+        const msg = (err?.message || String(err) || '').toLowerCase()
+        if (!msg.includes('429') && !msg.includes('too many requests')) {
+          console.warn('Error fetching vaults:', err?.message || err)
+        }
       }
     }
     fetchVaults()
     return () => { mounted = false }
   }, [token0, token1, ammConfig, connection, pool.vault0Balance, pool.vault1Balance])
 
-  const shortPoolId = pool.poolPda ? `${String(pool.poolPda).slice(0, 4)}...${String(pool.poolPda).slice(-4)}` : null
-  const displayName = shortPoolId ? shortPoolId : (sortedToken0 && sortedToken1 ? `${sortedToken0.toBase58().slice(0,6)} / ${sortedToken1.toBase58().slice(0,6)}` : 'Unknown')
+  const name0 = sortedToken0 ? getShortTokenName(sortedToken0.toBase58()) : 'UNKN'
+  const name1 = sortedToken1 ? getShortTokenName(sortedToken1.toBase58()) : 'UNKN'
+  const displayName = getPoolDisplayName(sortedToken0?.toBase58(), sortedToken1?.toBase58())
+
+  const getIconLabel = (symbol: string) => {
+    return symbol.slice(0, 2).toUpperCase()
+  }
+
+  const color0 = getTokenColor(name0)
+  const color1 = getTokenColor(name1)
+
   const [pairHash] = useState<string | null>(null)
   const vault0 = hookVault0 ?? rpcVault0 ?? pool.vault0Balance
   const vault1 = hookVault1 ?? rpcVault1 ?? pool.vault1Balance
-  const volume24h = pool.volume24h ?? '-'
-  const liquidityDisplay = (vault0 != null && vault1 != null) ? `${vault0} / ${vault1}` : volume24h
-  const fees24h = pool.fees24h ?? '-'
-  const apr = pool.apr ?? '-'
+  // Liquidity Display with exactly two decimals and explicit token symbols (e.g. 1023.22 SOL & 1033.64 USDC)
+  const liquidityDisplay = (vault0 != null && vault1 != null)
+    ? `${Number(vault0).toFixed(2)} ${name0} & ${Number(vault1).toFixed(2)} ${name1}`
+    : '-'
+
+  // Fetch Fee Tier properly from dynamic on-chain ammConfigs matching
+  const getFeeTier = () => {
+    if (!pool.ammConfig) return '-'
+    const config = ammConfigs.find(
+      (c) => {
+        const cPub = c.publicKey?.toBase58 ? c.publicKey.toBase58() : String(c.publicKey)
+        const pConfig = pool.ammConfig?.toBase58 ? pool.ammConfig.toBase58() : String(pool.ammConfig)
+        return cPub.toLowerCase() === pConfig.toLowerCase()
+      }
+    )
+    if (!config) {
+      return pool.fee ? (String(pool.fee).includes('%') ? pool.fee : `${pool.fee}%`) : '-'
+    }
+    const feeRate = config.tradeFeeRate ?? config.trade_fee_rate ?? 0
+    return `${(Number(feeRate) / 10000).toFixed(2)}%`
+  }
+  const feeDisplay = getFeeTier()
 
   const [hoverInfo, setHoverInfo] = useState<{ poolId?: string | null; token0?: string | null; token1?: string | null } | null>(null)
   const hoverTimeout = useRef<number | null>(null)
@@ -105,7 +147,7 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
 
   const copyText = async (value?: string | null) => {
     if (!value) return
-    try { await navigator.clipboard.writeText(value) } catch (e) {}
+    try { await navigator.clipboard.writeText(value) } catch (e) { }
   }
 
   const onDeposit = () => {
@@ -125,14 +167,22 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
     try { navigate('/liquidity/deposit', { state }) } catch (e) { navigate('/liquidity/deposit') }
   }
 
+  const onSwap = () => {
+    navigate('/swap', { state: pool })
+  }
+
   return (
     <tr key={displayName} className="lp-row">
       <td className="lp-td lp-td-pool lp-col-pool">
         <div className="lp-td-pool-inner">
           <div className="lp-hover-wrapper" onMouseEnter={() => { void handleIconHover() }} onMouseLeave={handleIconLeave} style={{ display: 'inline-block' }}>
-            <div className="lp-pool-icons" style={{ cursor: 'pointer' }} title="Hover to view pool info">
-              <span className="lp-icon lp-icon-a" />
-              <span className="lp-icon lp-icon-b" />
+            <div className="lp-pool-badges" style={{ cursor: 'pointer' }} title="Hover to view pool info">
+              <div className="lp-pool-badge lp-pool-badge-a" style={{ backgroundColor: color0 }}>
+                {getIconLabel(name0)}
+              </div>
+              <div className="lp-pool-badge lp-pool-badge-b" style={{ backgroundColor: color1 }}>
+                {getIconLabel(name1)}
+              </div>
             </div>
             {hoverInfo && (
               <div className="lp-hover-card">
@@ -164,17 +214,20 @@ function PoolRow({ pool, navigate }: { pool: any; navigate: any }) {
         </div>
       </td>
       <td className="lp-td lp-col-liquidity">{liquidityDisplay}</td>
-      <td className="lp-td lp-col-volume">{volume24h}</td>
-      <td className="lp-td lp-col-fees">{fees24h}</td>
-      <td className="lp-td lp-col-apr">
-        <span className="lp-apr-value">{apr}</span>
-      </td>
+      <td className="lp-td lp-col-fee-tier">{feeDisplay}</td>
       <td className="lp-td lp-td-actions lp-col-actions">
-        <button className="lp-deposit-btn" onClick={onDeposit}>Deposit</button>
+        <div className="lp-actions-cell">
+          <div className="lp-swap-tooltip-wrapper">
+            <button className="lp-action-swap-btn" onClick={onSwap} aria-label={`Swap ${displayName}`}>
+              <img src={swapIcon} alt="Swap" />
+            </button>
+            <span className="lp-swap-tooltip-text">Swap</span>
+          </div>
+          <button className="lp-deposit-btn" onClick={onDeposit}>Deposit</button>
+        </div>
       </td>
     </tr>
   )
-
 }
 
 const Liquidity = () => {
@@ -182,8 +235,10 @@ const Liquidity = () => {
   const program = useProgram()
   const { connection } = useConnection()
   const [pools, setPools] = useState<any[]>([])
-  const [loadingPools, setLoadingPools] = useState(false)
+  const [ammConfigs, setAmmConfigs] = useState<any[]>([])
+  const [loadingPools, setLoadingPools] = useState(true)
   const [poolsError, setPoolsError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     let mounted = true
@@ -197,44 +252,89 @@ const Liquidity = () => {
         let attempt = 0
         let lastErr: any = null
 
+        // Fetch AMM Configs dynamically to map correct Fee Tiers
+        let fetchedConfigs: any[] = []
+
         while (attempt < maxAttempts) {
           attempt++
           try {
             if (program) {
-              const all = await (program.account as any).poolState.all()
-              accounts = all.map((a: any) => ({ pubkey: a.publicKey, account: a.account }))
+              const [allPoolsRes, allConfigsRes] = await Promise.all([
+                (program.account as any).poolState.all(),
+                (program.account as any).ammConfig.all()
+              ])
+              accounts = allPoolsRes.map((a: any) => ({ pubkey: a.publicKey, account: a.account }))
+              fetchedConfigs = allConfigsRes.map((c: any) => ({
+                ...c.account,
+                publicKey: c.publicKey,
+              }))
             } else {
               const raw = await connection.getProgramAccounts(PROGRAM_ID)
               const coder = new anchor.BorshAccountsCoder(idlJson as any)
               accounts = []
               for (const r of raw) {
-                const data = r.account.data
-                let decoded: any = null
                 try {
-                  const buf = Buffer.from((data as any)[0], 'base64')
-                  try { decoded = coder.decode('poolState', buf) } catch (e) {}
-                  if (!decoded) try { decoded = coder.decode('pool_state', buf) } catch (e) {}
-                  if (!decoded) {
-                    accounts.push({ pubkey: r.pubkey, account: r.account })
+                  const data = r.account.data as any
+                  let buf: Buffer
+
+                  if (Buffer.isBuffer(data)) {
+                    buf = data
+                  } else if (data instanceof Uint8Array) {
+                    buf = Buffer.from(data)
+                  } else if (typeof data === 'string') {
+                    buf = Buffer.from(data, 'base64')
+                  } else if (Array.isArray(data) && data.length > 0) {
+                    buf = Buffer.from(data[0], 'base64')
+                  } else {
                     continue
                   }
-                  accounts.push({ pubkey: r.pubkey, account: decoded })
+
+                  // Try to decode as PoolState
+                  let decodedPool: any = null
+                  try { decodedPool = coder.decode('PoolState', buf) } catch (e) { }
+                  if (!decodedPool) try { decodedPool = coder.decode('poolState', buf) } catch (e) { }
+                  if (!decodedPool) try { decodedPool = coder.decode('pool_state', buf) } catch (e) { }
+
+                  if (decodedPool) {
+                    accounts.push({ pubkey: r.pubkey, account: decodedPool })
+                    continue
+                  }
+
+                  // Try to decode as AmmConfig
+                  let decodedConfig: any = null
+                  try { decodedConfig = coder.decode('AmmConfig', buf) } catch (e) { }
+                  if (!decodedConfig) try { decodedConfig = coder.decode('ammConfig', buf) } catch (e) { }
+                  if (!decodedConfig) try { decodedConfig = coder.decode('amm_config', buf) } catch (e) { }
+
+                  if (decodedConfig) {
+                    fetchedConfigs.push({
+                      ...decodedConfig,
+                      publicKey: r.pubkey,
+                    })
+                  }
                 } catch (err) {
-                  accounts.push({ pubkey: r.pubkey, account: r.account })
+                  // skip decoding errors
                 }
               }
+            }
+            if (mounted) {
+              setAmmConfigs(fetchedConfigs)
             }
             lastErr = null
             break
           } catch (err: any) {
             lastErr = err
             const msg = (err?.message || String(err) || '').toLowerCase()
-            console.error('Error loading pools (attempt', attempt, '):', err)
             if (msg.includes('429') || msg.includes('too many requests')) {
+              // Log a single clean warning notification once instead of spamming full stack traces
+              if (attempt === 1) {
+                console.warn('Solana Devnet RPC Rate Limit hit (HTTP 429). Retrying requests in background with backoff...')
+              }
               const backoff = Math.min(500 * Math.pow(2, attempt - 1), 4000) + Math.round(Math.random() * 200)
               await sleep(backoff)
               continue
             }
+            console.warn(`Error loading pools on attempt ${attempt}: ${err?.message || err}`)
             break
           }
         }
@@ -265,7 +365,7 @@ const Liquidity = () => {
 
             mapped.push({
               poolPda: poolPubkey,
-              name: acc.name ?? (mint0 ? String(mint0).slice(0,6) : 'Pool'),
+              name: acc.name ?? (mint0 ? String(mint0).slice(0, 6) : 'Pool'),
               fee: acc.fee ?? '-',
               ammConfig,
               token0: mint0 ?? null,
@@ -331,13 +431,22 @@ const Liquidity = () => {
       subId = connection.onProgramAccountChange(PROGRAM_ID, async () => {
         if (mounted) await loadPools()
       })
-    } catch (e) {}
+    } catch (e) { }
 
     return () => {
       mounted = false
       if (subId != null) connection.removeProgramAccountChangeListener(subId)
     }
   }, [program, connection])
+
+  // Improved case-insensitive, partial match filtering for pool name (display symbol pair) and pool id PDA
+  const filteredPools = pools.filter((p) => {
+    if (!searchQuery) return true
+    const q = searchQuery.trim().toLowerCase()
+    const displayName = getPoolDisplayName(p.token0, p.token1).toLowerCase()
+    const pda = p.poolPda ? String(p.poolPda).toLowerCase() : ''
+    return displayName.includes(q) || pda.includes(q)
+  })
 
   return (
     <div className="lp-page">
@@ -349,26 +458,25 @@ const Liquidity = () => {
 
         <div className="lp-stats">
           <div className="lp-stat-card">
-            <span className="lp-stat-label">TVL</span>
-            <span className="lp-stat-value">$1,297,859,870.95</span>
-          </div>
-          <div className="lp-stat-card">
-            <span className="lp-stat-label">24h Volume</span>
-            <span className="lp-stat-value">$225,550,051.98</span>
+            <span className="lp-stat-label">Total Number of Pools</span>
+            <span className="lp-stat-value">
+              {loadingPools ? 'Loading...' : `${pools.length} Pools`}
+            </span>
           </div>
         </div>
       </div>
 
       <div className="lp-filter-bar">
         <div className="lp-filter-left">
-          <input className="lp-search" placeholder="Search pool" />
+          <input
+            className="lp-search"
+            placeholder="Search pool name or id..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
-        
-        <div className="lp-filters">
-          <button className="lp-filter active">All</button>
-          <button className="lp-filter">Standard</button>
-          <button className="lp-filter">Stables</button>
-        </div>
+
+        {/* Filter pills removed per instruction */}
 
         <div className="lp-filter-right">
           <button className="lp-create-btn" onClick={() => navigate('/liquidity/create')}>
@@ -385,29 +493,35 @@ const Liquidity = () => {
           <thead>
             <tr>
               <th className="lp-th lp-th-pool lp-col-pool">Pool</th>
-              <th className="lp-th lp-col-liquidity">Liquidity (token0/token1)</th>
-              <th className="lp-th lp-col-volume">Volume 24H</th>
-              <th className="lp-th lp-col-fees">Fees 24H</th>
-              <th className="lp-th lp-col-apr">APR 24H</th>
-              <th className="lp-th lp-col-actions"></th>
+              <th className="lp-th lp-col-liquidity">Liquidity</th>
+              <th className="lp-th lp-col-fee-tier">Fee Tier</th>
+              <th className="lp-th lp-col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loadingPools ? (
-              <tr><td colSpan={7}>Loading pools…</td></tr>
+              <tr>
+                <td colSpan={4}>
+                  <div className="portfolio-container-loading">
+                    <div className="loading-spinner"></div>
+                    <p>Loading pools...</p>
+                  </div>
+                </td>
+              </tr>
+
             ) : poolsError ? (
-              <tr><td colSpan={7}>Error: {poolsError}</td></tr>
-            ) : pools.length === 0 ? (
-              <tr><td colSpan={7}>No pools found on-chain.</td></tr>
+              <tr><td colSpan={4}>Error: {poolsError}</td></tr>
+            ) : filteredPools.length === 0 ? (
+              <tr><td colSpan={4}>No pools found matching search filter.</td></tr>
             ) : (
-              pools.map((p, idx) => (
-                <PoolRow key={p.poolPda ?? p.token0 ?? idx} pool={p} navigate={navigate} />
+              filteredPools.map((p, idx) => (
+                <PoolRow key={p.poolPda ?? p.token0 ?? idx} pool={p} navigate={navigate} ammConfigs={ammConfigs} />
               ))
             )}
           </tbody>
         </table>
       </div>
-      <p className="lp-note">Deposit to any of the pools as you wish.</p>
+      <p className="lp-note">Provide liquidity to any pool to earn swap fee rewards.</p>
     </div>
   )
 }

@@ -2,6 +2,8 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import './Swap.css'
 import useProgram from '../../utils/useProgram'
+import { getShortTokenName, getPoolDisplayName } from '../../utils/token'
+import { formatAmount } from '../../utils/format'
 import { PublicKey, SendTransactionError } from '@solana/web3.js'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import * as anchor from '@coral-xyz/anchor'
@@ -15,15 +17,17 @@ import {
   getMint,
   getAccount,
 } from '@solana/spl-token'
-import viewIcon from '../../assets/view.svg'
 import copyIcon from '../../assets/copy.svg'
 import showPriceIcon from '../../assets/show-price.svg'
-import toggleIcon from '../../assets/toggle.svg'
+import straightArrowIcon from '../../assets/straight-arrow.svg'
+import swapIcon from '../../assets/swap.svg'
+import walletIcon from '../../assets/wallet.svg'
 import BN from 'bn.js'
 import { computeTransferFeeForPre, computeInverseTransferFee, CpmmFee } from '../../utils/curve/fee'
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import idlJson from '../../../idl/raydium_cp_swap.json'
+import { logActivity } from '../../utils/activity'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
@@ -55,6 +59,17 @@ type PoolData = {
   token1: string | null
   ammConfig: string | null
   raw: any
+  price?: string
+}
+
+// Deterministic pleasing HSL color generation based on token symbol
+function getTokenColor(symbol: string): string {
+  let hash = 0
+  for (let i = 0; i < symbol.length; i++) {
+    hash = symbol.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue}, 65%, 40%)`
 }
 
 export default function Swap() {
@@ -73,6 +88,67 @@ export default function Swap() {
   const [showPoolSelector, setShowPoolSelector] = useState(false)
   const [poolsReloadKey, setPoolsReloadKey] = useState(0)
   const [swapDirection, setSwapDirection] = useState<SwapDirection>('token0-to-token1')
+  const [ammConfigs, setAmmConfigs] = useState<any[]>([])
+  const [poolHoverInfo, setPoolHoverInfo] = useState<{ poolId?: string | null; token0?: string | null; token1?: string | null } | null>(null)
+  const poolHoverTimeout = useRef<number | null>(null)
+
+  const clearPoolHoverTimeout = () => {
+    if (poolHoverTimeout.current != null) {
+      clearTimeout(poolHoverTimeout.current)
+      poolHoverTimeout.current = null
+    }
+  }
+
+  const showPoolHover = () => {
+    clearPoolHoverTimeout()
+    setPoolHoverInfo({
+      poolId: poolIdStr ?? null,
+      token0: token0Str ?? null,
+      token1: token1Str ?? null,
+    })
+  }
+
+  const hidePoolHover = () => {
+    clearPoolHoverTimeout()
+    poolHoverTimeout.current = window.setTimeout(() => setPoolHoverInfo(null), 150)
+  }
+
+  const getFeeTier = (pool: any) => {
+    if (!pool || !pool.ammConfig) return '-'
+    const poolConfigStr = typeof pool.ammConfig === 'string'
+      ? pool.ammConfig
+      : pool.ammConfig?.toBase58
+        ? pool.ammConfig.toBase58()
+        : String(pool.ammConfig)
+
+    // 1. Try local configs cache first
+    const cached = localAmmConfigsCache.get(poolConfigStr)
+    if (cached) return cached
+
+    // 2. Try the general ammConfigs list
+    const config = ammConfigs.find((c) => {
+      const cPubStr = typeof c.publicKey === 'string'
+        ? c.publicKey
+        : c.publicKey?.toBase58
+          ? c.publicKey.toBase58()
+          : String(c.publicKey)
+      return cPubStr.toLowerCase() === poolConfigStr.toLowerCase()
+    })
+
+    if (!config) {
+      if (pool.fee) {
+        return String(pool.fee).includes('%') ? pool.fee : `${pool.fee}%`
+      }
+      return '-'
+    }
+    const feeRate = config.tradeFeeRate ?? config.trade_fee_rate ?? 0
+    const feeRateNum = typeof feeRate === 'number'
+      ? feeRate
+      : feeRate?.toNumber
+        ? feeRate.toNumber()
+        : Number(feeRate?.toString?.()) || 0
+    return `${(feeRateNum / 10000).toFixed(2)}%`
+  }
 
   const detectTokenProgram = async (mint: PublicKey) => {
     const info = await connection.getAccountInfo(mint)
@@ -142,15 +218,22 @@ export default function Swap() {
         try {
           const work = (async () => {
             let accounts: Array<any> = []
+            let fetchedConfigs: any[] = []
             if (program) {
-              const all = await (program.account as any).poolState.all()
-              accounts = all.map((a: any) => ({ pubkey: a.publicKey, account: a.account }))
+              const [allPoolsRes, allConfigsRes] = await Promise.all([
+                (program.account as any).poolState.all(),
+                (program.account as any).ammConfig.all()
+              ])
+              accounts = allPoolsRes.map((a: any) => ({ pubkey: a.publicKey, account: a.account }))
+              fetchedConfigs = allConfigsRes.map((c: any) => ({
+                ...c.account,
+                publicKey: c.publicKey,
+              }))
             } else {
               const raw = await connection.getProgramAccounts(PROGRAM_ID)
               const coder = new anchor.BorshAccountsCoder(idlJson as any)
               accounts = []
               for (const r of raw) {
-                let decoded: any = null
                 try {
                   const data = r.account.data as any
                   let buf: Buffer
@@ -167,17 +250,37 @@ export default function Swap() {
                     continue
                   }
 
-                  try { decoded = coder.decode('poolState', buf) } catch (e1) {
-                    try { decoded = coder.decode('pool_state', buf) } catch (e2) {
-                      try { decoded = coder.decode('PoolState', buf) } catch (e3) { decoded = null }
+                  let decodedPool: any = null
+                  try { decodedPool = coder.decode('PoolState', buf) } catch (e1) {
+                    try { decodedPool = coder.decode('poolState', buf) } catch (e2) {
+                      try { decodedPool = coder.decode('pool_state', buf) } catch (e3) { decodedPool = null }
                     }
                   }
 
-                  if (decoded) {
-                    accounts.push({ pubkey: r.pubkey, account: decoded })
+                  if (decodedPool) {
+                    accounts.push({ pubkey: r.pubkey, account: decodedPool })
+                    continue
+                  }
+
+                  let decodedConfig: any = null
+                  try { decodedConfig = coder.decode('AmmConfig', buf) } catch (e1) {
+                    try { decodedConfig = coder.decode('ammConfig', buf) } catch (e2) {
+                      try { decodedConfig = coder.decode('amm_config', buf) } catch (e3) { decodedConfig = null }
+                    }
+                  }
+
+                  if (decodedConfig) {
+                    fetchedConfigs.push({
+                      ...decodedConfig,
+                      publicKey: r.pubkey,
+                    })
                   }
                 } catch (err: any) { }
               }
+            }
+
+            if (mounted) {
+              setAmmConfigs(fetchedConfigs)
             }
 
             const toPubString = (v: any) => {
@@ -221,8 +324,42 @@ export default function Swap() {
               }
             }
 
-            try { POOLS_CACHE.set(endpoint, { ts: Date.now(), pools: mapped }) } catch (e) { }
-            return mapped
+            const poolsWithPrices = await Promise.all(
+              mapped.map(async (pool) => {
+                try {
+                  const acc = pool.raw
+                  const vault0Key = acc.token0Vault ?? acc.token_0_vault ?? acc.vault0 ?? acc.token_0_vault_address
+                  const vault1Key = acc.token1Vault ?? acc.token_1_vault ?? acc.vault1 ?? acc.token_1_vault_address
+                  const dec0 = Number(acc.mint_0_decimals ?? acc.mint0Decimals ?? acc.decimals0 ?? 0)
+                  const dec1 = Number(acc.mint_1_decimals ?? acc.mint1Decimals ?? acc.decimals1 ?? 0)
+
+                  if (!vault0Key || !vault1Key) return { ...pool, price: '-' }
+
+                  const v0Pub = new PublicKey(typeof vault0Key === 'string' ? vault0Key : vault0Key.toBase58 ? vault0Key.toBase58() : String(vault0Key))
+                  const v1Pub = new PublicKey(typeof vault1Key === 'string' ? vault1Key : vault1Key.toBase58 ? vault1Key.toBase58() : String(vault1Key))
+
+                  const [b0, b1] = await Promise.all([
+                    connection.getTokenAccountBalance(v0Pub).catch(() => null),
+                    connection.getTokenAccountBalance(v1Pub).catch(() => null),
+                  ])
+
+                  if (!b0 || !b1) return { ...pool, price: '-' }
+
+                  const amount0 = b0.value.uiAmount ?? (Number(b0.value.amount) / Math.pow(10, dec0))
+                  const amount1 = b1.value.uiAmount ?? (Number(b1.value.amount) / Math.pow(10, dec1))
+
+                  if (!amount0 || !amount1 || amount0 === 0) return { ...pool, price: '0.00' }
+
+                  const price = amount1 / amount0
+                  return { ...pool, price: formatAmount(price) }
+                } catch (e) {
+                  return { ...pool, price: '-' }
+                }
+              })
+            )
+
+            try { POOLS_CACHE.set(endpoint, { ts: Date.now(), pools: poolsWithPrices }) } catch (e) { }
+            return poolsWithPrices
           })()
           POOLS_PROMISE.set(endpoint, work)
           const mapped = await work
@@ -298,8 +435,6 @@ export default function Swap() {
   const [amountIn, setAmountIn] = useState('')
   const [amountOut, setAmountOut] = useState('')
   const [lastEditedField, setLastEditedField] = useState<'input' | 'output'>('input')
-  const [hoverInfo, setHoverInfo] = useState<{ label: string; value: string } | null>(null)
-  const hoverTimeout = useRef<number | null>(null)
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [errorDetails, setErrorDetails] = useState<string | null>(null)
@@ -307,8 +442,6 @@ export default function Swap() {
   const [showInversePrice, setShowInversePrice] = useState(false)
   const [priceDetails, setPriceDetails] = useState<{ token0ToToken1: string; token1ToToken0: string } | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
-
-  const numeric = (s: string) => Number(s || 0)
 
   const parseHumanAmountToBaseUnits = (value: string, decimals: number) => {
     const normalized = value.trim()
@@ -348,31 +481,307 @@ export default function Swap() {
   const poolIdStr = activePool?.poolPda
   const token0Str = activePool?.token0
   const token1Str = activePool?.token1
-  const ammConfigStr = activePool?.ammConfig
   const isToken0ToToken1 = swapDirection === 'token0-to-token1'
   const inputTokenLabel = 'Input Token Amount'
   const outputTokenLabel = 'Output Token Amount'
   const inputTokenAddress = isToken0ToToken1 ? token0Str : token1Str
   const outputTokenAddress = isToken0ToToken1 ? token1Str : token0Str
-  const inputTokenShort = shorten(inputTokenAddress)
-  const outputTokenShort = shorten(outputTokenAddress)
-  const inputQuoteLabel = isToken0ToToken1 ? 'Token0' : 'Token1'
-  const outputQuoteLabel = isToken0ToToken1 ? 'Token1' : 'Token0'
+  const inputTokenShort = getShortTokenName(inputTokenAddress)
+  const outputTokenShort = getShortTokenName(outputTokenAddress)
+  const inputQuoteLabel = getShortTokenName(inputTokenAddress)
+  const outputQuoteLabel = getShortTokenName(outputTokenAddress)
 
   const getPoolLabel = () => {
     if (!activePool) return 'Select Pool'
     if (token0Str && token1Str) {
-      return `${shorten(token0Str)} / ${shorten(token1Str)}`
+      return getPoolDisplayName(token0Str, token1Str)
     }
     return poolIdStr ? shorten(poolIdStr) : 'Select Pool'
   }
-
-
 
   const getPoolSelectorLabel = () => {
     if (loadingPools) return 'Loading pools...'
     return getPoolLabel()
   }
+
+  const [userBalances, setUserBalances] = useState<{ token0: string; token1: string } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [poolReserves, setPoolReserves] = useState<{ reserve0: string; reserve1: string } | null>(null)
+  const [activePoolFeeTier, setActivePoolFeeTier] = useState<string>('-')
+  const [localAmmConfigsCache, setLocalAmmConfigsCache] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    if (allPools.length === 0) return
+
+    let mounted = true
+    const fetchAllUniqueAmmConfigs = async () => {
+      try {
+        const uniqueConfigs = Array.from(new Set(allPools.map(p => p.ammConfig).filter(Boolean))) as string[]
+        if (uniqueConfigs.length === 0) return
+
+        const publicKeys = uniqueConfigs.map(addr => new PublicKey(addr))
+        const accountsInfo = await connection.getMultipleAccountsInfo(publicKeys)
+
+        const newCache = new Map<string, string>()
+        const coder = new anchor.BorshAccountsCoder(idlJson as any)
+
+        accountsInfo.forEach((info, idx) => {
+          if (info) {
+            let decoded: any = null
+            try { decoded = coder.decode('AmmConfig', info.data) } catch (e) {}
+            if (!decoded) try { decoded = coder.decode('ammConfig', info.data) } catch (e) {}
+            if (!decoded) try { decoded = coder.decode('amm_config', info.data) } catch (e) {}
+
+            if (decoded) {
+              const feeRate = decoded.tradeFeeRate ?? decoded.trade_fee_rate ?? 0
+              const feeRateNum = typeof feeRate === 'number'
+                ? feeRate
+                : feeRate?.toNumber
+                  ? feeRate.toNumber()
+                  : Number(feeRate?.toString?.()) || 0
+              const tier = `${(feeRateNum / 10000).toFixed(2)}%`
+              newCache.set(uniqueConfigs[idx], tier)
+            }
+          }
+        })
+
+        if (mounted) {
+          setLocalAmmConfigsCache(newCache)
+        }
+      } catch (err) {
+        console.error('Error fetching all unique AMM configs:', err)
+      }
+    }
+
+    fetchAllUniqueAmmConfigs()
+    return () => {
+      mounted = false
+    }
+  }, [allPools, connection])
+
+  const parseBalanceValue = (bal: string | null | undefined): number => {
+    if (!bal || bal === '-') return 0
+    const parsed = Number(bal.replace(/,/g, ''))
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  useEffect(() => {
+    const configStr = activePool?.ammConfig
+    if (!configStr) {
+      setActivePoolFeeTier('-')
+      return
+    }
+
+    let mounted = true
+    const fetchSpecificAmmConfig = async () => {
+      try {
+        const configPubkey = new PublicKey(configStr)
+        let configAcct: any = null
+
+        if (program) {
+          try {
+            configAcct = await (program.account as any).ammConfig.fetch(configPubkey)
+          } catch (e) {
+            console.warn('Failed to fetch via program, trying connection getAccountInfo:', e)
+          }
+        }
+
+        if (!configAcct) {
+          const info = await connection.getAccountInfo(configPubkey)
+          if (info) {
+            const coder = new anchor.BorshAccountsCoder(idlJson as any)
+            try { configAcct = coder.decode('AmmConfig', info.data) } catch (e) {}
+            if (!configAcct) try { configAcct = coder.decode('ammConfig', info.data) } catch (e) {}
+            if (!configAcct) try { configAcct = coder.decode('amm_config', info.data) } catch (e) {}
+          }
+        }
+
+        if (!mounted) return
+
+        const poolAny = activePool as any
+        if (configAcct) {
+          const feeRate = configAcct.tradeFeeRate ?? configAcct.trade_fee_rate ?? 0
+          const feeRateNum = typeof feeRate === 'number'
+            ? feeRate
+            : feeRate?.toNumber
+              ? feeRate.toNumber()
+              : Number(feeRate?.toString?.()) || 0
+          setActivePoolFeeTier(`${(feeRateNum / 10000).toFixed(2)}%`)
+        } else if (poolAny.fee) {
+          const feeStr = String(poolAny.fee)
+          setActivePoolFeeTier(feeStr.includes('%') ? feeStr : `${feeStr}%`)
+        } else {
+          setActivePoolFeeTier('-')
+        }
+      } catch (err) {
+        console.error('Error fetching specific AMM config:', err)
+        if (mounted) {
+          const poolAny = activePool as any
+          if (poolAny.fee) {
+            const feeStr = String(poolAny.fee)
+            setActivePoolFeeTier(feeStr.includes('%') ? feeStr : `${feeStr}%`)
+          } else {
+            setActivePoolFeeTier('-')
+          }
+        }
+      }
+    }
+
+    fetchSpecificAmmConfig()
+    return () => {
+      mounted = false
+    }
+  }, [activePool?.ammConfig, program, connection])
+
+  const updateInputAmount = async (value: string) => {
+    setLastEditedField('input')
+    setAmountIn(value)
+    if (!value || Number(value) <= 0) {
+      setAmountOut('')
+      return
+    }
+    try {
+      const quote = await quoteExactIn(value)
+      setAmountOut(formatBaseUnitsToHuman(quote.receiveAmount, quote.outputDecimals))
+    } catch (err) {
+      setAmountOut('')
+    }
+  }
+
+  const updateOutputAmount = async (value: string) => {
+    setLastEditedField('output')
+    setAmountOut(value)
+    if (!value || Number(value) <= 0) {
+      setAmountIn('')
+      return
+    }
+    try {
+      const quote = await quoteExactOut(value)
+      setAmountIn(formatBaseUnitsToHuman(quote.maxInputPreFee, quote.inputDecimals))
+    } catch (err) {
+      setAmountIn('')
+    }
+  }
+
+  const [showWalletConnectedToast, setShowWalletConnectedToast] = useState(false)
+  const previousConnectedRef = useRef<boolean | null>(null)
+
+  useEffect(() => {
+    if (previousConnectedRef.current === null) {
+      previousConnectedRef.current = wallet.connected
+      return
+    }
+
+    if (!previousConnectedRef.current && wallet.connected) {
+      setShowWalletConnectedToast(true)
+    } else if (!wallet.connected) {
+      setShowWalletConnectedToast(false)
+    }
+
+    previousConnectedRef.current = wallet.connected
+  }, [wallet.connected])
+
+  useEffect(() => {
+    if (!wallet.publicKey || !activePool) {
+      setUserBalances(null)
+      return
+    }
+
+    let mounted = true
+    const fetchUserBalances = async () => {
+      try {
+        const owner = wallet.publicKey!
+        const poolAny = activePool as any
+        const mint0Str = poolAny.token0 || poolAny.token0Mint
+        const mint1Str = poolAny.token1 || poolAny.token1Mint
+
+        if (!mint0Str || !mint1Str) return
+
+        const mint0 = new PublicKey(mint0Str)
+        const mint1 = new PublicKey(mint1Str)
+
+        let dec0 = Number(poolAny.raw?.mint_0_decimals ?? poolAny.raw?.mint0Decimals ?? poolAny.raw?.decimals0 ?? poolAny.decimals0 ?? 0)
+        let dec1 = Number(poolAny.raw?.mint_1_decimals ?? poolAny.raw?.mint1Decimals ?? poolAny.raw?.decimals1 ?? poolAny.decimals1 ?? 0)
+
+        const isSol0 = mint0Str.toLowerCase() === 'so11111111111111111111111111111111111111112'
+        const isSol1 = mint1Str.toLowerCase() === 'so11111111111111111111111111111111111111112'
+
+        const fmt = (val: number) => formatAmount(val)
+
+        const callWithRetry = async <T extends unknown>(fn: () => Promise<T>, maxRetries = 5): Promise<T> => {
+          let attempt = 0
+          while (attempt < maxRetries) {
+            attempt++
+            try {
+              return await fn()
+            } catch (err: any) {
+              const msg = String(err?.message || '').toLowerCase()
+              if (attempt < maxRetries && (msg.includes('429') || msg.includes('too many requests'))) {
+                const wait = Math.min(200 * Math.pow(2, attempt), 2000) + Math.round(Math.random() * 100)
+                await new Promise((r) => setTimeout(r, wait))
+                continue
+              }
+              throw err
+            }
+          }
+          throw new Error('Max retries reached')
+        }
+
+        if (dec0 === 0 && !isSol0) {
+          try {
+            const mInfo = await callWithRetry(() => getMint(connection, mint0))
+            dec0 = mInfo.decimals
+          } catch (e) {}
+        }
+        if (dec1 === 0 && !isSol1) {
+          try {
+            const mInfo = await callWithRetry(() => getMint(connection, mint1))
+            dec1 = mInfo.decimals
+          } catch (e) {}
+        }
+
+        let bal0 = '0'
+        let bal1 = '0'
+
+        if (isSol0) {
+          const solBal = await callWithRetry(() => connection.getBalance(owner))
+          bal0 = fmt(solBal / 1e9)
+        } else {
+          const tokenProgram0 = await callWithRetry(() => detectTokenProgram(mint0)).catch(() => TOKEN_PROGRAM_ID)
+          const ata0 = getAssociatedTokenAddressSync(mint0, owner, true, tokenProgram0)
+          const b0 = await callWithRetry(() => connection.getTokenAccountBalance(ata0)).catch(() => null)
+          if (b0) {
+            bal0 = b0.value.uiAmount != null ? fmt(b0.value.uiAmount) : fmt(Number(b0.value.amount) / Math.pow(10, dec0))
+          }
+        }
+
+        if (isSol1) {
+          const solBal = await callWithRetry(() => connection.getBalance(owner))
+          bal1 = fmt(solBal / 1e9)
+        } else {
+          const tokenProgram1 = await callWithRetry(() => detectTokenProgram(mint1)).catch(() => TOKEN_PROGRAM_ID)
+          const ata1 = getAssociatedTokenAddressSync(mint1, owner, true, tokenProgram1)
+          const b1 = await callWithRetry(() => connection.getTokenAccountBalance(ata1)).catch(() => null)
+          if (b1) {
+            bal1 = b1.value.uiAmount != null ? fmt(b1.value.uiAmount) : fmt(Number(b1.value.amount) / Math.pow(10, dec1))
+          }
+        }
+
+        if (mounted) {
+          setUserBalances({ token0: bal0, token1: bal1 })
+        }
+      } catch (e) {
+        console.error('Error fetching user balances:', e)
+      }
+    }
+
+    fetchUserBalances()
+    const interval = setInterval(fetchUserBalances, 10000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
+  }, [wallet.publicKey, activePool, connection])
 
   const toggleSwapDirection = () => {
     setSwapDirection((current) => (current === 'token0-to-token1' ? 'token1-to-token0' : 'token0-to-token1'))
@@ -384,41 +793,9 @@ export default function Swap() {
     setTxResult(null)
   }
 
-  const clearHoverTimeout = () => {
-    if (hoverTimeout.current != null) {
-      clearTimeout(hoverTimeout.current)
-      hoverTimeout.current = null
-    }
-  }
-
-  const showHover = (label: string, value?: string | null) => {
-    if (!value) return
-    clearHoverTimeout()
-    setHoverInfo({ label, value })
-  }
-
-  const hideHover = () => {
-    clearHoverTimeout()
-    hoverTimeout.current = window.setTimeout(() => setHoverInfo(null), 150)
-  }
-
   const copyText = async (value?: string | null) => {
     if (!value) return
     try { await navigator.clipboard.writeText(value) } catch (e) { }
-  }
-
-  const renderHoverCard = (label: string, value?: string | null) => {
-    if (!value || hoverInfo?.label !== label) return null
-    return (
-      <div className="swap-hover-card" onMouseEnter={clearHoverTimeout} onMouseLeave={hideHover}>
-        <div className="swap-hover-row">
-          <span><strong>{label}:</strong> {value}</span>
-          <button className="swap-copy-btn" onClick={() => copyText(value)} title={`Copy ${label.toLowerCase()}`} aria-label={`Copy ${label.toLowerCase()}`}>
-            <img src={copyIcon} alt="Copy" />
-          </button>
-        </div>
-      </div>
-    )
   }
 
   const onSubmit = (e: React.FormEvent) => {
@@ -427,8 +804,7 @@ export default function Swap() {
   }
 
   const loadSwapContext = async (ownerPublicKey?: PublicKey) => {
-    if (!program) throw new Error('Program not ready')
-    const programId = (program as any).programId as PublicKey
+    const programId = program ? (program as any).programId as PublicKey : PROGRAM_ID
     let t0 = token0MintParam as PublicKey | undefined
     let t1 = token1MintParam as PublicKey | undefined
     if (!t0 || !t1) {
@@ -458,14 +834,45 @@ export default function Swap() {
     const inputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(t0!, ownerPublicKey, false, inputTokenProgram) : null
     const outputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(t1!, ownerPublicKey, false, outputTokenProgram) : null
 
-    const mint0 = await getMint((program.provider as any).connection, t0!)
-    const mint1 = await getMint((program.provider as any).connection, t1!)
-    const vault0Acct = await getAccount((program.provider as any).connection, token0Vault)
-    const vault1Acct = await getAccount((program.provider as any).connection, token1Vault)
-    const poolStateAcct: any = await (program.account as any).poolState.fetch(poolAddr)
+    let mint0: any = { decimals: 9 }
+    let mint1: any = { decimals: 9 }
+    try { mint0 = await getMint(connection, t0!) } catch(e) {}
+    try { mint1 = await getMint(connection, t1!) } catch(e) {}
 
-    const poolVault0Amount = new BN(vault0Acct.amount.toString())
-    const poolVault1Amount = new BN(vault1Acct.amount.toString())
+    let vault0Amount = new BN(0)
+    let vault1Amount = new BN(0)
+    try {
+      const vault0Acct = await getAccount(connection, token0Vault)
+      vault0Amount = new BN(vault0Acct.amount.toString())
+    } catch(e) {
+      try {
+        const bal0 = await connection.getTokenAccountBalance(token0Vault)
+        vault0Amount = new BN(bal0.value.amount)
+      } catch(err) {}
+    }
+
+    try {
+      const vault1Acct = await getAccount(connection, token1Vault)
+      vault1Amount = new BN(vault1Acct.amount.toString())
+    } catch(e) {
+      try {
+        const bal1 = await connection.getTokenAccountBalance(token1Vault)
+        vault1Amount = new BN(bal1.value.amount)
+      } catch(err) {}
+    }
+
+    let poolStateAcct: any = null
+    if (program) {
+      poolStateAcct = await (program.account as any).poolState.fetch(poolAddr)
+    } else {
+      const info = await connection.getAccountInfo(poolAddr)
+      if (!info) throw new Error('Pool account not found')
+      const coder = new anchor.BorshAccountsCoder(idlJson as any)
+      try { poolStateAcct = coder.decode('poolState', info.data) } catch (e) {}
+      if (!poolStateAcct) try { poolStateAcct = coder.decode('pool_state', info.data) } catch (e) {}
+      if (!poolStateAcct) try { poolStateAcct = coder.decode('PoolState', info.data) } catch (e) {}
+      if (!poolStateAcct) throw new Error('Failed to decode pool state')
+    }
 
     const proto0 = new BN(poolStateAcct.protocolFeesToken0?.toString?.() ?? poolStateAcct.protocolFeesToken0 ?? 0)
     const fund0 = new BN(poolStateAcct.fundFeesToken0?.toString?.() ?? poolStateAcct.fundFeesToken0 ?? 0)
@@ -477,16 +884,38 @@ export default function Swap() {
     const creator1 = new BN(poolStateAcct.creatorFeesToken1?.toString?.() ?? poolStateAcct.creatorFeesToken1 ?? 0)
     const feesToken1 = proto1.add(fund1).add(creator1)
 
-    const totalVault0 = poolVault0Amount.sub(feesToken0)
-    const totalVault1 = poolVault1Amount.sub(feesToken1)
+    const totalVault0 = vault0Amount.sub(feesToken0)
+    const totalVault1 = vault1Amount.sub(feesToken1)
 
-    const ammConfigAcct: any = await (program.account as any).ammConfig.fetch(ammConfigParam as PublicKey)
-    const tradeFeeRate = new BN(ammConfigAcct.tradeFeeRate?.toString?.() ?? ammConfigAcct.trade_fee_rate ?? 0)
-    const creatorFeeRate = new BN(ammConfigAcct.creatorFeeRate?.toString?.() ?? ammConfigAcct.creator_fee_rate ?? 0)
-    const protocolFeeRate = new BN(ammConfigAcct.protocolFeeRate?.toString?.() ?? ammConfigAcct.protocol_fee_rate ?? 0)
-    const fundFeeRate = new BN(ammConfigAcct.fundFeeRate?.toString?.() ?? ammConfigAcct.fund_fee_rate ?? 0)
+    const matchedConfig = ammConfigs.find(
+      (c) => c.publicKey?.toBase58() === ammConfigParam?.toBase58()
+    )
 
-    const creatorFeeOn = Number(poolStateAcct.creatorFeeOn ?? poolStateAcct.creator_fee_on ?? 0)
+    let ammConfigAcct: any = matchedConfig
+    if (!ammConfigAcct) {
+      if (program) {
+        try {
+          ammConfigAcct = await (program.account as any).ammConfig.fetch(ammConfigParam as PublicKey)
+        } catch(e) {}
+      } else if (ammConfigParam) {
+        try {
+          const configInfo = await connection.getAccountInfo(ammConfigParam)
+          if (configInfo) {
+            const coder = new anchor.BorshAccountsCoder(idlJson as any)
+            try { ammConfigAcct = coder.decode('AmmConfig', configInfo.data) } catch (e) {}
+            if (!ammConfigAcct) try { ammConfigAcct = coder.decode('ammConfig', configInfo.data) } catch (e) {}
+            if (!ammConfigAcct) try { ammConfigAcct = coder.decode('amm_config', configInfo.data) } catch (e) {}
+          }
+        } catch(e) {}
+      }
+    }
+
+    const tradeFeeRate = new BN(ammConfigAcct?.tradeFeeRate?.toString?.() ?? ammConfigAcct?.trade_fee_rate ?? 0)
+    const creatorFeeRate = new BN(ammConfigAcct?.creatorFeeRate?.toString?.() ?? ammConfigAcct?.creator_fee_rate ?? 0)
+    const protocolFeeRate = new BN(ammConfigAcct?.protocolFeeRate?.toString?.() ?? ammConfigAcct?.protocol_fee_rate ?? 0)
+    const fundFeeRate = new BN(ammConfigAcct?.fundFeeRate?.toString?.() ?? ammConfigAcct?.fund_fee_rate ?? 0)
+
+    const creatorFeeOn = Number(poolStateAcct?.creatorFeeOn ?? poolStateAcct?.creator_fee_on ?? 0)
 
     return {
       t0: t0!,
@@ -554,7 +983,7 @@ export default function Swap() {
     const ctx = await loadSwapContext()
     const resolved = await getDirectionalContext(ctx, undefined, direction)
     const inputBase = parseHumanAmountToBaseUnits(humanAmount, resolved.inputDecimals)
-    const inputTransferFee = await computeTransferFeeForPre(((program as any).provider as any).connection, resolved.inputMint, inputBase)
+    const inputTransferFee = await computeTransferFeeForPre(connection, resolved.inputMint, inputBase)
     const actualAmountIn = inputBase.sub(inputTransferFee)
 
     if (actualAmountIn.lte(new BN(0))) {
@@ -588,7 +1017,7 @@ export default function Swap() {
       outputAmount = outputAmountSwapped.sub(creatorFeeOnOutput)
     }
 
-    const outputTransferFee = await computeTransferFeeForPre(((program as any).provider as any).connection, resolved.outputMint, outputAmount)
+    const outputTransferFee = await computeTransferFeeForPre(connection, resolved.outputMint, outputAmount)
     const receiveAmount = outputAmount.sub(outputTransferFee)
 
     return {
@@ -611,7 +1040,7 @@ export default function Swap() {
     const resolved = await getDirectionalContext(ctx, undefined, direction)
     const desiredOutputBase = parseHumanAmountToBaseUnits(humanAmount, resolved.outputDecimals)
 
-    const invOut = await computeInverseTransferFee(((program as any).provider as any).connection, resolved.outputMint, desiredOutputBase)
+    const invOut = await computeInverseTransferFee(connection, resolved.outputMint, desiredOutputBase)
     const preTransferOutput = invOut.transferAmount
     const outputTransferFee = invOut.transferFee
 
@@ -620,6 +1049,10 @@ export default function Swap() {
     if (!resolved.creatorFeeOnInput) {
       outputAmountSwapped = CpmmFee.calculatePreFeeAmount(preTransferOutput, ctx.creatorFeeRate)
       creatorFee = outputAmountSwapped.sub(preTransferOutput)
+    }
+
+    if (outputAmountSwapped.gte(resolved.totalOutputAmount)) {
+      throw new Error("Insufficient liquidity in pool")
     }
 
     const inputAmountLessFees = ConstantProductCurve.swapBaseOutputWithoutFees(
@@ -640,7 +1073,7 @@ export default function Swap() {
       tradeFee = actualAmountIn.sub(inputAmountLessFees)
     }
 
-    const invIn = await computeInverseTransferFee(((program as any).provider as any).connection, resolved.inputMint, actualAmountIn)
+    const invIn = await computeInverseTransferFee(connection, resolved.inputMint, actualAmountIn)
 
     return {
       desiredOutputBase,
@@ -661,19 +1094,40 @@ export default function Swap() {
   const loadPrices = async () => {
     if (!activePool?.poolPda || !token0MintParam || !token1MintParam) {
       setPriceDetails(null)
+      setPoolReserves(null)
       return
     }
 
     setPriceLoading(true)
     try {
-      const exactInQuote = await quoteExactIn('1')
-      const exactOutQuote = await quoteExactOut('1')
-      setPriceDetails({
-        token0ToToken1: formatBaseUnitsToHuman(exactInQuote.receiveAmount, exactInQuote.outputDecimals),
-        token1ToToken0: formatBaseUnitsToHuman(exactOutQuote.maxInputPreFee, exactOutQuote.inputDecimals),
+      const ctx = await loadSwapContext()
+      const r0 = formatBaseUnitsToHuman(ctx.totalVault0, ctx.mint0.decimals)
+      const r1 = formatBaseUnitsToHuman(ctx.totalVault1, ctx.mint1.decimals)
+      setPoolReserves({
+        reserve0: r0,
+        reserve1: r1
       })
+
+      try {
+        if (ctx.totalVault0.gt(new BN(0)) && ctx.totalVault1.gt(new BN(0))) {
+          const exactInQuote = await quoteExactIn('1', 'token0-to-token1')
+          const inverseInQuote = await quoteExactIn('1', 'token1-to-token0')
+          const p0 = Number(formatBaseUnitsToHuman(exactInQuote.receiveAmount, exactInQuote.outputDecimals))
+          const p1 = Number(formatBaseUnitsToHuman(inverseInQuote.receiveAmount, inverseInQuote.outputDecimals))
+          setPriceDetails({
+            token0ToToken1: formatAmount(p0),
+            token1ToToken0: formatAmount(p1),
+          })
+        } else {
+          setPriceDetails(null)
+        }
+      } catch (err) {
+        console.warn('Failed to calculate price details:', err)
+        setPriceDetails(null)
+      }
     } catch (err) {
       setPriceDetails(null)
+      setPoolReserves(null)
     } finally {
       setPriceLoading(false)
     }
@@ -681,7 +1135,7 @@ export default function Swap() {
 
   useEffect(() => {
     loadPrices()
-  }, [activePool?.poolPda, token0MintParam, token1MintParam, swapDirection])
+  }, [activePool?.poolPda, token0MintParam, token1MintParam])
 
   async function handleSwap() {
     if (!program) {
@@ -690,6 +1144,10 @@ export default function Swap() {
     }
     if (!wallet || !wallet.publicKey) {
       alert('Connect wallet to swap')
+      return
+    }
+    if (activeBalanceExceeded) {
+      setStatus('Insufficient balance')
       return
     }
 
@@ -738,6 +1196,13 @@ export default function Swap() {
             .rpc()
 
           setTxResult({ sig: tx, explorer: 'https://explorer.solana.com/tx/' + tx + '?cluster=devnet' })
+          logActivity({
+            actionType: 'Swap',
+            poolAddress: ctx.poolAddr.toBase58(),
+            tokenPair: `${inputTokenShort}/${outputTokenShort}`,
+            signature: tx,
+            status: 'success',
+          })
 
           await connection.confirmTransaction(tx, 'confirmed').catch(() => null)
           await loadPrices()
@@ -780,6 +1245,13 @@ export default function Swap() {
             .rpc()
 
           setTxResult({ sig: tx, explorer: 'https://explorer.solana.com/tx/' + tx + '?cluster=devnet' })
+          logActivity({
+            actionType: 'Swap',
+            poolAddress: ctx.poolAddr.toBase58(),
+            tokenPair: `${inputTokenShort}/${outputTokenShort}`,
+            signature: tx,
+            status: 'success',
+          })
 
           await connection.confirmTransaction(tx, 'confirmed').catch(() => null)
           await loadPrices()
@@ -846,6 +1318,50 @@ export default function Swap() {
     }
   }
 
+  const inputBalance = isToken0ToToken1 ? userBalances?.token0 : userBalances?.token1
+  const outputBalance = isToken0ToToken1 ? userBalances?.token1 : userBalances?.token0
+  const isInputBalanceExceeded = inputBalance != null && Number(amountIn || '0') > parseBalanceValue(inputBalance)
+  const isOutputBalanceExceeded = outputBalance != null && Number(amountOut || '0') > parseBalanceValue(outputBalance)
+  const activeBalanceExceeded = lastEditedField === 'output' ? isOutputBalanceExceeded : isInputBalanceExceeded
+  const hasValidSwapAmount = Number(amountIn || '0') > 0 || Number(amountOut || '0') > 0
+  const colorIn = getTokenColor(inputTokenShort)
+  const colorOut = getTokenColor(outputTokenShort)
+  const getIconLabel = (symbol: string) => symbol.slice(0, 2).toUpperCase()
+
+  const outputReserve = isToken0ToToken1 ? poolReserves?.reserve1 : poolReserves?.reserve0
+  const isLiquidityExceeded = amountOut && outputReserve ? (Number(amountOut) >= Number(outputReserve)) : false
+  const canSubmitSwap = !busy && !!wallet.publicKey && hasValidSwapAmount && !activeBalanceExceeded && !isLiquidityExceeded
+
+  const priceToken0 = getShortTokenName(token0Str)
+  const priceToken1 = getShortTokenName(token1Str)
+  const pricePairLabel = showInversePrice ? `${priceToken1}/${priceToken0}` : `${priceToken0}/${priceToken1}`
+  const priceValue = showInversePrice ? priceDetails?.token1ToToken0 : priceDetails?.token0ToToken1
+  const priceText = priceLoading
+    ? 'Loading price...'
+    : priceValue
+      ? `${pricePairLabel} = ${priceValue}`
+      : 'Price unavailable'
+
+  const filteredPools = allPools.filter((pool) => {
+    if (!searchQuery) return true
+    const q = searchQuery.toLowerCase().trim()
+    const name0 = getShortTokenName(pool.token0).toLowerCase()
+    const name1 = getShortTokenName(pool.token1).toLowerCase()
+    const poolName = `${name0}-${name1}`
+    const token0Mint = (pool.token0 || '').toLowerCase()
+    const token1Mint = (pool.token1 || '').toLowerCase()
+    const poolPda = (pool.poolPda || '').toLowerCase()
+
+    return (
+      name0.includes(q) ||
+      name1.includes(q) ||
+      poolName.includes(q) ||
+      token0Mint.includes(q) ||
+      token1Mint.includes(q) ||
+      poolPda.includes(q)
+    )
+  })
+
   return (
     <div className="swap-page">
       <div className="swap-layout">
@@ -881,7 +1397,39 @@ export default function Swap() {
                 <div className="swap-header">
                   <div className="swap-title">
                     <h2>Swap</h2>
-                    <div className="swap-subtitle">Pool id: {shorten(poolIdStr)}</div>
+                    <div className="swap-pool-name-container">
+                      <div
+                        className="swap-pool-name-hover-wrapper"
+                        onMouseEnter={showPoolHover}
+                        onMouseLeave={hidePoolHover}
+                      >
+                        <span className="swap-pool-name-display">
+                          {getPoolDisplayName(token0Str, token1Str)}
+                        </span>
+                        {poolHoverInfo && (
+                          <div className="swap-pool-hover-card" onMouseEnter={showPoolHover} onMouseLeave={hidePoolHover}>
+                            <div className="swap-hover-row">
+                              <span><strong>Pool ID:</strong> {poolHoverInfo.poolId ?? 'unknown'}</span>
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.poolId)} title="Copy pool id" aria-label="Copy pool id">
+                                <img src={copyIcon} alt="Copy" />
+                              </button>
+                            </div>
+                            <div className="swap-hover-row">
+                              <span><strong>Token0 Mint:</strong> {poolHoverInfo.token0 ?? '-'}</span>
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token0)} title="Copy token0" aria-label="Copy token0">
+                                <img src={copyIcon} alt="Copy" />
+                              </button>
+                            </div>
+                            <div className="swap-hover-row">
+                              <span><strong>Token1 Mint:</strong> {poolHoverInfo.token1 ?? '-'}</span>
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token1)} title="Copy token1" aria-label="Copy token1">
+                                <img src={copyIcon} alt="Copy" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -898,6 +1446,21 @@ export default function Swap() {
 
                     {showPoolSelector && (
                       <div className="swap-pool-dropdown">
+                        {/* Search Bar */}
+                        <div className="swap-pool-search-container">
+                          <input
+                            type="text"
+                            className="swap-pool-search-input"
+                            placeholder="Search by token symbol or mint address..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            autoFocus
+                          />
+                          {searchQuery && (
+                            <button type="button" className="swap-pool-search-clear" onClick={() => setSearchQuery('')}>×</button>
+                          )}
+                        </div>
+
                         {loadingPools ? (
                           <div className="swap-pool-item swap-pool-empty">Loading pools...</div>
                         ) : poolsError ? (
@@ -908,26 +1471,35 @@ export default function Swap() {
                             </div>
                             <div style={{ marginTop: 6, fontSize: 12, color: 'var(--if-text-secondary)' }}>{poolsError}</div>
                           </div>
-                        ) : allPools.length === 0 ? (
+                        ) : filteredPools.length === 0 ? (
                           <div className="swap-pool-item swap-pool-empty">No pools found</div>
                         ) : (
-                          allPools.map((pool) => (
-                            <button
-                              key={pool.poolPda}
-                              className={`swap-pool-item ${selectedPool?.poolPda === pool.poolPda ? 'active' : ''}`}
-                              onClick={() => {
-                                setSelectedPool(pool)
-                                setShowPoolSelector(false)
-                                setAmountIn('')
-                                setAmountOut('')
-                              }}
-                            >
-                              <span className="swap-pool-pair">
-                                {pool.token0 && pool.token1 ? `${shorten(pool.token0)} / ${shorten(pool.token1)}` : shorten(pool.poolPda)}
-                              </span>
-                              <span className="swap-pool-id">{shorten(pool.poolPda)}</span>
-                            </button>
-                          ))
+                          filteredPools.map((pool) => {
+                            const name0 = getShortTokenName(pool.token0)
+                            const name1 = getShortTokenName(pool.token1)
+                            const poolName = `${name0}-${name1}`
+                            const feeTier = getFeeTier(pool)
+                            const price = pool.price ?? '-'
+                            return (
+                              <button
+                                key={pool.poolPda}
+                                className={`swap-pool-item ${selectedPool?.poolPda === pool.poolPda ? 'active' : ''}`}
+                                onClick={() => {
+                                  setSelectedPool(pool)
+                                  setShowPoolSelector(false)
+                                  setAmountIn('')
+                                  setAmountOut('')
+                                }}
+                              >
+                                <div className="swap-pool-item__info">
+                                  <div className="swap-pool-item__name">{poolName}</div>
+                                  <div className="swap-pool-item__meta">
+                                    {feeTier} • {price} {name0}/{name1}
+                                  </div>
+                                </div>
+                              </button>
+                            )
+                          })
                         )}
                       </div>
                     )}
@@ -935,98 +1507,127 @@ export default function Swap() {
                 </div>
 
                 <div className="swap-body">
-                  <div className="swap-panel">
-                    <h3>Swap Details</h3>
-                    <div className="address-row">
-                      <span>Pool id</span>
-                      <span className="address-value">{shorten(poolIdStr)}</span>
-                      <div className="swap-hover-wrapper" onMouseEnter={() => showHover('Pool id', poolIdStr)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!poolIdStr}
-                          aria-label="View pool id"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Pool id', poolIdStr)}
+                  <div className="swap-panel pool-details-panel">
+                    <h3>Pool Details</h3>
+                    {activePool ? (
+                      <div className="pool-details-content">
+                        <div className="pool-details-header">
+                          <div className="pool-details-header__badge">
+                            {getPoolDisplayName(token0Str, token1Str)}
+                          </div>
+                          <div className="pool-details-header__fee">
+                            {activePoolFeeTier} Fee
+                          </div>
+                        </div>
+
+                        <div className="pool-details-grid">
+                          <div className="pool-details-card">
+                            <span className="pool-details-card__label">Current Price</span>
+                            <span className="pool-details-card__value">{priceText}</span>
+                          </div>
+
+                          {poolReserves && (
+                            <div className="pool-details-card">
+                              <span className="pool-details-card__label">Total Pool Liquidity</span>
+                              <div className="pool-details-balances">
+                                <div className="pool-balance-row">
+                                  <span className="pool-balance-token">{getShortTokenName(token0Str)}</span>
+                                  <span className="pool-balance-amount">{formatAmount(poolReserves.reserve0)}</span>
+                                </div>
+                                <div className="pool-balance-row">
+                                  <span className="pool-balance-token">{getShortTokenName(token1Str)}</span>
+                                  <span className="pool-balance-amount">{formatAmount(poolReserves.reserve1)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="pool-details-card">
+                            <span className="pool-details-card__label">Your Balances</span>
+                            <div className="pool-details-balances">
+                              <div className="pool-balance-row">
+                                <span className="pool-balance-token">{getShortTokenName(token0Str)}</span>
+                                <span className="pool-balance-amount">{userBalances ? formatAmount(userBalances.token0) : '-'}</span>
+                              </div>
+                              <div className="pool-balance-row">
+                                <span className="pool-balance-token">{getShortTokenName(token1Str)}</span>
+                                <span className="pool-balance-amount">{userBalances ? formatAmount(userBalances.token1) : '-'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="address-row">
-                      <span>Amm config</span>
-                      <span className="address-value">{shorten(ammConfigStr)}</span>
-                      <div className="swap-hover-wrapper" onMouseEnter={() => showHover('Amm config', ammConfigStr)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!ammConfigStr}
-                          aria-label="View amm config"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Amm config', ammConfigStr)}
-                      </div>
-                    </div>
-                    <div className="address-row">
-                      <span>Token0 address</span>
-                      <span className="address-value">{shorten(token0Str)}</span>
-                      <div className="swap-hover-wrapper" onMouseEnter={() => showHover('Token0 address', token0Str)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!token0Str}
-                          aria-label="View token0"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Token0 address', token0Str)}
-                      </div>
-                    </div>
-                    <div className="address-row">
-                      <span>Token1 address</span>
-                      <span className="address-value">{shorten(token1Str)}</span>
-                      <div className="swap-hover-wrapper" onMouseEnter={() => showHover('Token1 address', token1Str)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!token1Str}
-                          aria-label="View token1"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Token1 address', token1Str)}
-                      </div>
-                    </div>
+                    ) : (
+                      <div className="pool-details-empty">Select a pool to view details</div>
+                    )}
                   </div>
 
                   <div className="swap-panel">
                     <h3>Swap Amount</h3>
                     <form className="swap-form" onSubmit={onSubmit}>
-                      <div className="token-row">
-                        <div className="token-info">
-                          <span className="token-label">{inputTokenLabel}</span>
-                          <div className="token-address">
-                            <span>{inputTokenShort}</span>
+                      {/* From Card */}
+                      <div className={`swap-input-card ${lastEditedField === 'input' && isInputBalanceExceeded ? 'swap-input-card--invalid' : ''}`}>
+                        <div className="swap-input-card-header">
+                          <span className="swap-input-card-label">From</span>
+                          <div className="swap-input-card-balance-wrap">
+                            <img src={walletIcon} alt="Wallet" className="wallet-mini-icon" />
+                            <span className="swap-input-card-balance-val">{inputBalance ?? '0'}</span>
+                            <>
+                              <button
+                                type="button"
+                                className="swap-input-card-btn"
+                                onClick={() => {
+                                  const val = parseBalanceValue(inputBalance)
+                                  updateInputAmount(val > 0 ? val.toString() : '0')
+                                }}
+                              >
+                                Max
+                              </button>
+                              <button
+                                type="button"
+                                className="swap-input-card-btn"
+                                onClick={() => {
+                                  const val = parseBalanceValue(inputBalance)
+                                  updateInputAmount(val > 0 ? (val / 2).toString() : '0')
+                                }}
+                              >
+                                50%
+                              </button>
+                            </>
                           </div>
                         </div>
-                        <input
-                          className="swap-input"
-                          value={amountIn}
-                          onChange={async (e) => {
-                            setLastEditedField('input')
-                            const next = e.target.value
-                            setAmountIn(next)
-                            if (!next || Number(next) <= 0) {
-                              setAmountOut('')
-                              return
-                            }
-                            try {
-                              const quote = await quoteExactIn(next)
-                              setAmountOut(formatBaseUnitsToHuman(quote.receiveAmount, quote.outputDecimals))
-                            } catch (err) {
-                              setAmountOut('')
-                            }
-                          }}
-                          placeholder="0.0"
-                        />
+
+                        <div className="swap-input-card-row">
+                          <div className="swap-token-select-pill" onClick={() => {
+                            setShowPoolSelector((prev) => {
+                              if (!prev) {
+                                setSearchQuery(inputTokenShort)
+                                return true
+                              }
+                              return false
+                            })
+                          }}>
+                            <div className="swap-token-logo-sphere" style={{ backgroundColor: colorIn }}>
+                              {getIconLabel(inputTokenShort)}
+                            </div>
+                            <span className="swap-token-symbol">{inputTokenShort}</span>
+                            <span className="swap-token-chevron">▼</span>
+                          </div>
+
+                          <div className="swap-input-amount-wrap">
+                            <input
+                              type="text"
+                              className="swap-input-field-borderless"
+                              value={amountIn}
+                              onChange={(e) => updateInputAmount(e.target.value)}
+                              placeholder="0"
+                            />
+                            <span className="swap-input-fiat-value">~$0</span>
+                          </div>
+                        </div>
                       </div>
 
+                      {/* Direction Switch Toggle */}
                       <div className="swap-direction-toggle">
                         <button
                           type="button"
@@ -1035,61 +1636,78 @@ export default function Swap() {
                           aria-label="Swap token direction"
                           title="Swap direction"
                         >
-                          <span className="swap-direction-toggle__icon">↓</span>
-                          <img src={toggleIcon} alt="swap" className="swap-direction-toggle__svg" />
+                          <img src={straightArrowIcon} alt="arrow" className="swap-direction-toggle__arrow" />
+                          <img src={swapIcon} alt="swap" className="swap-direction-toggle__swap" />
                         </button>
                       </div>
 
-                      <div className="token-row">
-                        <div className="token-info">
-                          <span className="token-label">{outputTokenLabel}</span>
-                          <div className="token-address">
-                            <span>{outputTokenShort}</span>
+                      {/* To Card */}
+                      <div className={`swap-input-card ${lastEditedField === 'output' && isOutputBalanceExceeded ? 'swap-input-card--invalid' : ''}`}>
+                        <div className="swap-input-card-header">
+                          <span className="swap-input-card-label">To</span>
+                          <div className="swap-input-card-balance-wrap">
+                            <img src={walletIcon} alt="Wallet" className="wallet-mini-icon" />
+                            <span className="swap-input-card-balance-val">{outputBalance ?? '0'}</span>
+                            <>
+                              <button
+                                type="button"
+                                className="swap-input-card-btn"
+                                onClick={() => {
+                                  const val = parseBalanceValue(outputBalance)
+                                  updateOutputAmount(val > 0 ? val.toString() : '0')
+                                }}
+                              >
+                                Max
+                              </button>
+                              <button
+                                type="button"
+                                className="swap-input-card-btn"
+                                onClick={() => {
+                                  const val = parseBalanceValue(outputBalance)
+                                  updateOutputAmount(val > 0 ? (val / 2).toString() : '0')
+                                }}
+                              >
+                                50%
+                              </button>
+                            </>
                           </div>
                         </div>
-                        <input
-                          className="swap-input"
-                          value={amountOut}
-                          onChange={async (e) => {
-                            setLastEditedField('output')
-                            const next = e.target.value
-                            setAmountOut(next)
-                            if (!next || Number(next) <= 0) {
-                              setAmountIn('')
-                              return
-                            }
-                            try {
-                              const quote = await quoteExactOut(next)
-                              setAmountIn(formatBaseUnitsToHuman(quote.maxInputPreFee, quote.inputDecimals))
-                            } catch (err) {
-                              setAmountIn('')
-                            }
-                          }}
-                          placeholder="0.0"
-                        />
+
+                        <div className="swap-input-card-row">
+                          <div className="swap-token-select-pill" onClick={() => {
+                            setShowPoolSelector((prev) => {
+                              if (!prev) {
+                                setSearchQuery(outputTokenShort)
+                                return true
+                              }
+                              return false
+                            })
+                          }}>
+                            <div className="swap-token-logo-sphere" style={{ backgroundColor: colorOut }}>
+                              {getIconLabel(outputTokenShort)}
+                            </div>
+                            <span className="swap-token-symbol">{outputTokenShort}</span>
+                            <span className="swap-token-chevron">▼</span>
+                          </div>
+
+                          <div className="swap-input-amount-wrap">
+                            <input
+                              type="text"
+                              className="swap-input-field-borderless"
+                              value={amountOut}
+                              onChange={(e) => updateOutputAmount(e.target.value)}
+                              placeholder="0"
+                            />
+                            <span className="swap-input-fiat-value">~$0</span>
+                          </div>
+                        </div>
                       </div>
 
+                      {/* Price box / strip info */}
                       <div className="swap-price-box">
                         <div className="swap-price-strip">
                           <div className="swap-price-strip__value">
-                            {priceLoading ? (
-                              <span className="swap-price-strip__text">Loading price...</span>
-                            ) : priceDetails ? (
-                              showInversePrice ? (
-                                <span className="swap-price-strip__text">
-                                  1 {outputQuoteLabel} ≈ {priceDetails.token1ToToken0} {inputQuoteLabel}
-                                </span>
-                              ) : (
-                                <span className="swap-price-strip__text">
-                                  1 {inputQuoteLabel} ≈ {priceDetails.token0ToToken1} {outputQuoteLabel}
-                                </span>
-                              )
-                            ) : (
-                              <span className="swap-price-strip__text">Price unavailable</span>
-                            )}
-                            <span className="swap-price-strip__suffix">
-                              {showInversePrice ? `${outputQuoteLabel.toLowerCase()}/${inputQuoteLabel.toLowerCase()}` : `${inputQuoteLabel.toLowerCase()}/${outputQuoteLabel.toLowerCase()}`}
-                            </span>
+                            <span className="swap-price-strip__text">{priceText}</span>
                           </div>
                           <div className="swap-price-strip__toggle">
                             <button
@@ -1100,9 +1718,6 @@ export default function Swap() {
                             >
                               <img src={showPriceIcon} alt="toggle price" className="swap-price-strip__icon" />
                             </button>
-                            <span className="swap-price-strip__label">
-                              {showInversePrice ? 'Show token0/token1' : 'Show token1/token0'}
-                            </span>
                           </div>
                         </div>
 
@@ -1114,8 +1729,8 @@ export default function Swap() {
                       </div>
 
                       <div className="swap-actions-row">
-                        <button type="submit" className="btn primary" disabled={busy || !(numeric(lastEditedField === 'input' ? amountIn : amountOut) > 0) || !wallet.publicKey}>
-                          Swap
+                        <button type="submit" className="swap-btn-full" disabled={!canSubmitSwap}>
+                          {busy ? 'Swapping...' : !wallet.publicKey ? 'Connect Wallet' : activeBalanceExceeded ? 'Insufficient Balance' : isLiquidityExceeded ? 'Insufficient Liquidity' : 'Swap'}
                         </button>
                       </div>
                     </form>
@@ -1126,6 +1741,16 @@ export default function Swap() {
           </div>
         </div>
       </div>
+      {showWalletConnectedToast && wallet.publicKey && (
+        <div className="wallet-connected-toast-wrapper">
+          <TransactionCard
+            status="success"
+            title="Wallet Connected"
+            message={`Successfully connected to ${shorten(wallet.publicKey.toBase58())}`}
+            onClose={() => setShowWalletConnectedToast(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }

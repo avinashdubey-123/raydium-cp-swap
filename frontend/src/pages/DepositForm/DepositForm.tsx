@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import './DepositForm.css'
 import useProgram from '../../utils/useProgram'
@@ -8,13 +8,18 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import * as anchor from '@coral-xyz/anchor'
 import { getAuthAddress, getPoolAddress, getPoolLpMintAddress, getPoolVaultAddress } from '../../utils/pda'
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getMint, getAccount } from '@solana/spl-token'
-import viewIcon from '../../assets/view.svg'
 import copyIcon from '../../assets/copy.svg'
+import walletIcon from '../../assets/wallet.svg'
+import plusIcon from '../../assets/plus-circle.svg'
 import BN from 'bn.js'
 import { computeTransferFeeForPre, computeInverseTransferFee } from '../../utils/curve/fee'
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import { RoundDirection } from '../../utils/curve/calculator'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
+import { getShortTokenName, getPoolDisplayName } from '../../utils/token'
+import { formatAmount } from '../../utils/format'
+import idlJson from '../../../idl/raydium_cp_swap.json'
+import { logActivity } from '../../utils/activity'
 
 type Pool = {
   name?: string
@@ -32,6 +37,12 @@ type Pool = {
   decimals1?: number
 }
 
+const parseBalanceValue = (bal: string | null | undefined): number => {
+  if (!bal || bal === '-') return 0
+  const parsed = Number(bal.replace(/,/g, ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 export default function DepositForm() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -39,6 +50,7 @@ export default function DepositForm() {
   const poolFromRoute = (rawState as Pool) || null
   const program = useProgram()
   const wallet = useWallet()
+  const { connection } = useConnection()
 
   const poolPdaParam = useMemo(() => {
     try {
@@ -84,23 +96,234 @@ export default function DepositForm() {
   const poolName = poolFromRoute?.name ?? (poolState ? `Pool ${poolState?.lpMint?.toString?.()?.slice?.(0, 6) ?? 'Unknown'}` : 'Unknown Pool')
   const pool = poolFromRoute || { name: poolName, fee: '-' }
 
+  // prefer on-chain numeric values from usePool, fall back to route-provided values
+  const decimals0 = hookDecimals0 ?? poolState?.mint_0_decimals ?? (pool.decimals0 ?? 0)
+  const decimals1 = hookDecimals1 ?? poolState?.mint_1_decimals ?? (pool.decimals1 ?? 0)
+
+  const toAddressString = (v: any) => {
+    if (!v) return null
+    if (typeof v === 'string') return v
+    if (v?.toBase58) return v.toBase58()
+    try { return String(v) } catch { return null }
+  }
+
+  const poolIdStr = toAddressString(rawState?.poolPda ?? poolFromRoute?.poolPda)
+  const ammConfigStr = toAddressString(rawState?.ammConfig)
+  const token0Str = toAddressString(rawState?.token0Mint ?? rawState?.token0)
+  const token1Str = toAddressString(rawState?.token1Mint ?? rawState?.token1)
+
   const [amountA, setAmountA] = useState('')
   const [amountB, setAmountB] = useState('')
   const [lastEditedField, setLastEditedField] = useState<'token0' | 'token1'>('token0')
-  const [, setQuote] = useState<null | {
+  const [userBalances, setUserBalances] = useState<{ token0: string; token1: string } | null>(null)
+  const [quote, setQuote] = useState<null | {
     impliedLp: string,
     token0PostHuman: string
     token1PostHuman: string
   }>(null)
-  const [hoverInfo, setHoverInfo] = useState<{ label: string; value: string } | null>(null)
-  const hoverTimeout = useRef<number | null>(null)
+
+  const [poolHoverInfo, setPoolHoverInfo] = useState<{ poolId?: string | null; token0?: string | null; token1?: string | null } | null>(null)
+  const poolHoverTimeout = useRef<number | null>(null)
+  const [activePoolFeeTier, setActivePoolFeeTier] = useState<string>('-')
+
+  const clearPoolHoverTimeout = () => {
+    if (poolHoverTimeout.current != null) {
+      clearTimeout(poolHoverTimeout.current)
+      poolHoverTimeout.current = null
+    }
+  }
+
+  const showPoolHover = () => {
+    clearPoolHoverTimeout()
+    setPoolHoverInfo({
+      poolId: poolIdStr ?? null,
+      token0: token0Str ?? null,
+      token1: token1Str ?? null,
+    })
+  }
+
+  const hidePoolHover = () => {
+    clearPoolHoverTimeout()
+    poolHoverTimeout.current = window.setTimeout(() => setPoolHoverInfo(null), 150)
+  }
+
+  useEffect(() => {
+    const configStr = ammConfigStr
+    if (!configStr) {
+      setActivePoolFeeTier('-')
+      return
+    }
+
+    let mounted = true
+    const fetchSpecificAmmConfig = async () => {
+      try {
+        const configPubkey = new PublicKey(configStr)
+        let configAcct: any = null
+
+        if (program) {
+          try {
+            configAcct = await (program.account as any).ammConfig.fetch(configPubkey)
+          } catch (e) {
+            console.warn('Failed to fetch via program, trying connection getAccountInfo:', e)
+          }
+        }
+
+        if (!configAcct) {
+          const info = await connection.getAccountInfo(configPubkey)
+          if (info) {
+            const coder = new anchor.BorshAccountsCoder(idlJson as any)
+            try { configAcct = coder.decode('AmmConfig', info.data) } catch (e) {}
+            if (!configAcct) try { configAcct = coder.decode('ammConfig', info.data) } catch (e) {}
+            if (!configAcct) try { configAcct = coder.decode('amm_config', info.data) } catch (e) {}
+          }
+        }
+
+        if (!mounted) return
+
+        if (configAcct) {
+          const feeRate = configAcct.tradeFeeRate ?? configAcct.trade_fee_rate ?? 0
+          const feeRateNum = typeof feeRate === 'number'
+            ? feeRate
+            : feeRate?.toNumber
+              ? feeRate.toNumber()
+              : Number(feeRate?.toString?.()) || 0
+          setActivePoolFeeTier(`${(feeRateNum / 10000).toFixed(2)}%`)
+        } else if (pool.fee) {
+          const feeStr = String(pool.fee)
+          setActivePoolFeeTier(feeStr.includes('%') ? feeStr : `${feeStr}%`)
+        } else {
+          setActivePoolFeeTier('-')
+        }
+      } catch (err) {
+        console.error('Error fetching specific AMM config:', err)
+        if (mounted) {
+          if (pool.fee) {
+            const feeStr = String(pool.fee)
+            setActivePoolFeeTier(feeStr.includes('%') ? feeStr : `${feeStr}%`)
+          } else {
+            setActivePoolFeeTier('-')
+          }
+        }
+      }
+    }
+
+    fetchSpecificAmmConfig()
+    return () => {
+      mounted = false
+    }
+  }, [ammConfigStr, program, connection, pool.fee])
+
+
+  useEffect(() => {
+    if (!wallet.publicKey || !token0MintParam || !token1MintParam) {
+      setUserBalances(null)
+      return
+    }
+
+    let mounted = true
+    const fetchUserBalances = async () => {
+      try {
+        const owner = wallet.publicKey!
+        const mint0Str = token0MintParam.toBase58()
+        const mint1Str = token1MintParam.toBase58()
+
+        const mint0 = token0MintParam
+        const mint1 = token1MintParam
+
+        let dec0 = decimals0
+        let dec1 = decimals1
+
+        const isSol0 = mint0Str.toLowerCase() === 'so11111111111111111111111111111111111111112'
+        const isSol1 = mint1Str.toLowerCase() === 'so11111111111111111111111111111111111111112'
+
+        const fmt = (val: number) => formatAmount(val)
+
+        const callWithRetry = async <T extends unknown>(fn: () => Promise<T>, maxRetries = 5): Promise<T> => {
+          let attempt = 0
+          while (attempt < maxRetries) {
+            attempt++
+            try {
+              return await fn()
+            } catch (err: any) {
+              const msg = String(err?.message || '').toLowerCase()
+              if (attempt < maxRetries && (msg.includes('429') || msg.includes('too many requests'))) {
+                const wait = Math.min(200 * Math.pow(2, attempt), 2000) + Math.round(Math.random() * 100)
+                await new Promise((r) => setTimeout(r, wait))
+                continue
+              }
+              throw err
+            }
+          }
+          throw new Error('Max retries reached')
+        }
+
+        async function detectTokenProgram(connection: any, mint: PublicKey) {
+          const info = await connection.getAccountInfo(mint)
+          if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
+          if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
+          if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
+          return TOKEN_PROGRAM_ID
+        }
+
+        if (dec0 === 0 && !isSol0) {
+          try {
+            const mInfo = await callWithRetry(() => getMint(connection, mint0))
+            dec0 = mInfo.decimals
+          } catch (e) {}
+        }
+        if (dec1 === 0 && !isSol1) {
+          try {
+            const mInfo = await callWithRetry(() => getMint(connection, mint1))
+            dec1 = mInfo.decimals
+          } catch (e) {}
+        }
+
+        let bal0 = '0'
+        let bal1 = '0'
+
+        if (isSol0) {
+          const solBal = await callWithRetry(() => connection.getBalance(owner))
+          bal0 = fmt(solBal / 1e9)
+        } else {
+          const tokenProgram0 = await callWithRetry(() => detectTokenProgram(connection, mint0)).catch(() => TOKEN_PROGRAM_ID)
+          const ata0 = getAssociatedTokenAddressSync(mint0, owner, true, tokenProgram0)
+          const b0 = await callWithRetry(() => connection.getTokenAccountBalance(ata0)).catch(() => null)
+          if (b0) {
+            bal0 = b0.value.uiAmount != null ? fmt(b0.value.uiAmount) : fmt(Number(b0.value.amount) / Math.pow(10, dec0))
+          }
+        }
+
+        if (isSol1) {
+          const solBal = await callWithRetry(() => connection.getBalance(owner))
+          bal1 = fmt(solBal / 1e9)
+        } else {
+          const tokenProgram1 = await callWithRetry(() => detectTokenProgram(connection, mint1)).catch(() => TOKEN_PROGRAM_ID)
+          const ata1 = getAssociatedTokenAddressSync(mint1, owner, true, tokenProgram1)
+          const b1 = await callWithRetry(() => connection.getTokenAccountBalance(ata1)).catch(() => null)
+          if (b1) {
+            bal1 = b1.value.uiAmount != null ? fmt(b1.value.uiAmount) : fmt(Number(b1.value.amount) / Math.pow(10, dec1))
+          }
+        }
+
+        if (mounted) {
+          setUserBalances({ token0: bal0, token1: bal1 })
+        }
+      } catch (e) {
+        console.error('Error fetching user balances:', e)
+      }
+    }
+
+    fetchUserBalances()
+    const interval = setInterval(fetchUserBalances, 10000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
+  }, [wallet.publicKey, token0MintParam, token1MintParam, connection, decimals0, decimals1])
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [errorDetails, setErrorDetails] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const { connection } = useConnection()
-
-  const numeric = (s: string) => Number(s || 0)
 
   const parseHumanAmountToBaseUnits = (value: string, decimals: number) => {
     const normalized = value.trim()
@@ -133,53 +356,19 @@ export default function DepositForm() {
     return numerator.add(new BN(9999)).div(new BN(10000))
   }
 
-  const toAddressString = (v: any) => {
-    if (!v) return null
-    if (typeof v === 'string') return v
-    if (v?.toBase58) return v.toBase58()
-    try { return String(v) } catch { return null }
+  const detectTokenProgram = async (connectionRef: any, mint: PublicKey) => {
+    const info = await connectionRef.getAccountInfo(mint)
+    if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
+    if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
+    if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
+    return TOKEN_PROGRAM_ID
   }
 
-  const shorten = (v?: string | null) => {
-    if (!v) return '-'
-    return `${v.slice(0, 4)}...${v.slice(-4)}`
-  }
 
-  const clearHoverTimeout = () => {
-    if (hoverTimeout.current != null) {
-      clearTimeout(hoverTimeout.current)
-      hoverTimeout.current = null
-    }
-  }
-
-  const showHover = (label: string, value?: string | null) => {
-    if (!value) return
-    clearHoverTimeout()
-    setHoverInfo({ label, value })
-  }
-
-  const hideHover = () => {
-    clearHoverTimeout()
-    hoverTimeout.current = window.setTimeout(() => setHoverInfo(null), 150)
-  }
 
   const copyText = async (value?: string | null) => {
     if (!value) return
     try { await navigator.clipboard.writeText(value) } catch (e) { }
-  }
-
-  const renderHoverCard = (label: string, value?: string | null) => {
-    if (!value || hoverInfo?.label !== label) return null
-    return (
-      <div className="deposit-hover-card" onMouseEnter={clearHoverTimeout} onMouseLeave={hideHover}>
-        <div className="deposit-hover-row">
-          <span><strong>{label}:</strong> {value}</span>
-          <button className="deposit-copy-btn" onClick={() => copyText(value)} title={`Copy ${label.toLowerCase()}`} aria-label={`Copy ${label.toLowerCase()}`}>
-            <img src={copyIcon} alt="Copy" />
-          </button>
-        </div>
-      </div>
-    )
   }
 
   const onSubmit = (e: React.FormEvent) => {
@@ -187,9 +376,6 @@ export default function DepositForm() {
     handleDeposit()
   }
 
-  // prefer on-chain numeric values from usePool, fall back to route-provided values
-  const decimals0 = hookDecimals0 ?? poolState?.mint_0_decimals ?? (pool.decimals0 ?? 0)
-  const decimals1 = hookDecimals1 ?? poolState?.mint_1_decimals ?? (pool.decimals1 ?? 0)
   // prefer hook-provided UI amounts (already converted to UI amounts by usePool), else fall back to route-provided numeric values
   const totalVault0UI = (vault0Amount != null) ? vault0Amount : (pool.vault0Amount != null ? Number(pool.vault0Amount) : undefined)
   const totalVault1UI = (vault1Amount != null) ? vault1Amount : (pool.vault1Amount != null ? Number(pool.vault1Amount) : undefined)
@@ -218,11 +404,16 @@ export default function DepositForm() {
     const [token0Vault] = await getPoolVaultAddress(poolAddr, t0 as PublicKey, programId)
     const [token1Vault] = await getPoolVaultAddress(poolAddr, t1 as PublicKey, programId)
 
-    const mint0 = await getMint((program.provider as any).connection, t0!)
-    const mint1 = await getMint((program.provider as any).connection, t1!)
-    const lpMintAcct = await getMint((program.provider as any).connection, lpMint)
-    const vault0Acct = await getAccount((program.provider as any).connection, token0Vault)
-    const vault1Acct = await getAccount((program.provider as any).connection, token1Vault)
+    const connectionRef = (program.provider as any).connection
+    const token0Program = await detectTokenProgram(connectionRef, t0!)
+    const token1Program = await detectTokenProgram(connectionRef, t1!)
+    const lpTokenProgram = await detectTokenProgram(connectionRef, lpMint).catch(() => TOKEN_PROGRAM_ID)
+
+    const mint0 = await getMint(connectionRef, t0!, 'confirmed', token0Program)
+    const mint1 = await getMint(connectionRef, t1!, 'confirmed', token1Program)
+    const lpMintAcct = await getMint(connectionRef, lpMint, 'confirmed', lpTokenProgram)
+    const vault0Acct = await getAccount(connectionRef, token0Vault, 'confirmed', token0Program)
+    const vault1Acct = await getAccount(connectionRef, token1Vault, 'confirmed', token1Program)
     const poolStateAcct: any = await (program.account as any).poolState.fetch(poolAddr)
 
     const poolVault0Amount = new BN(vault0Acct.amount.toString())
@@ -310,9 +501,22 @@ export default function DepositForm() {
   const netVault0UI = totalVault0UI != null ? (Number(totalVault0UI) - feesToken0UI) : null
   const netVault1UI = totalVault1UI != null ? (Number(totalVault1UI) - feesToken1UI) : null
 
-  const depositRatio = (netVault0UI != null && netVault1UI != null && netVault1UI > 0)
-    ? (netVault0UI / Math.max(netVault1UI, 1)).toFixed(4)
+  const totalDepositAmount = Number(amountA || '0') + Number(amountB || '0')
+  const depositToken0Percent = totalDepositAmount > 0 ? ((Number(amountA || '0') / totalDepositAmount) * 100).toFixed(2) : '-'
+  const depositToken1Percent = totalDepositAmount > 0 ? ((Number(amountB || '0') / totalDepositAmount) * 100).toFixed(2) : '-'
+  const dynamicRatio = totalDepositAmount > 0
+    ? `${depositToken0Percent}% ${getShortTokenName(token0Str)} / ${depositToken1Percent}% ${getShortTokenName(token1Str)}`
     : '-'
+
+  const isInsufficientA = wallet.publicKey && amountA && userBalances?.token0
+    ? (Number(amountA) > parseBalanceValue(userBalances.token0))
+    : false
+
+  const isInsufficientB = wallet.publicKey && amountB && userBalances?.token1
+    ? (Number(amountB) > parseBalanceValue(userBalances.token1))
+    : false
+
+  const canSubmitDeposit = !busy && !!wallet.publicKey && (Number(amountA || '0') > 0 || Number(amountB || '0') > 0) && !isInsufficientA && !isInsufficientB
 
   async function handleDeposit() {
     if (!program) {
@@ -321,6 +525,10 @@ export default function DepositForm() {
     }
     if (!wallet || !wallet.publicKey) {
       alert('Connect wallet to deposit')
+      return
+    }
+    if (isInsufficientA || isInsufficientB) {
+      setStatus('Insufficient balance')
       return
     }
 
@@ -355,12 +563,17 @@ export default function DepositForm() {
       const [token0Vault] = await getPoolVaultAddress(poolAddr, t0 as PublicKey, programId)
       const [token1Vault] = await getPoolVaultAddress(poolAddr, t1 as PublicKey, programId)
 
-      const mint0 = await getMint((program.provider as any).connection, t0!)
-      const mint1 = await getMint((program.provider as any).connection, t1!)
-      const lpMintAcct = await getMint((program.provider as any).connection, lpMint)
+      const connectionRef = (program.provider as any).connection
+      const token0Program = await detectTokenProgram(connectionRef, t0!)
+      const token1Program = await detectTokenProgram(connectionRef, t1!)
+      const lpTokenProgram = await detectTokenProgram(connectionRef, lpMint).catch(() => TOKEN_PROGRAM_ID)
 
-      const vault0Acct = await getAccount((program.provider as any).connection, token0Vault)
-      const vault1Acct = await getAccount((program.provider as any).connection, token1Vault)
+      const mint0 = await getMint(connectionRef, t0!, 'confirmed', token0Program)
+      const mint1 = await getMint(connectionRef, t1!, 'confirmed', token1Program)
+      const lpMintAcct = await getMint(connectionRef, lpMint, 'confirmed', lpTokenProgram)
+
+      const vault0Acct = await getAccount(connectionRef, token0Vault, 'confirmed', token0Program)
+      const vault1Acct = await getAccount(connectionRef, token1Vault, 'confirmed', token1Program)
 
       const poolStateAcct: any = await (program.account as any).poolState.fetch(poolAddr)
 
@@ -383,17 +596,7 @@ export default function DepositForm() {
       const totalVault0 = poolVault0Amount.sub(feesToken0)
       const totalVault1 = poolVault1Amount.sub(feesToken1)
 
-      async function detectTokenProgram(connection: any, mint: PublicKey) {
-        const info = await connection.getAccountInfo(mint)
-        if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
-        if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
-        if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
-        // fallback to v1
-        return TOKEN_PROGRAM_ID
-      }
-
       const sourceField = lastEditedField
-      const connectionRef = (program.provider as any).connection
       const sourceHuman = sourceField === 'token0' ? amountA : amountB
       const sourceMint = sourceField === 'token0' ? t0! : t1!
       const sourceDecimals = sourceField === 'token0' ? mint0.decimals : mint1.decimals
@@ -440,14 +643,8 @@ export default function DepositForm() {
       const max0WithBuffer = applyMaxBuffer(max0, maxSlippageBps)
       const max1WithBuffer = applyMaxBuffer(max1, maxSlippageBps)
 
-      const token0Program = await detectTokenProgram((program.provider as any).connection, t0!)
-      const token1Program = await detectTokenProgram((program.provider as any).connection, t1!)
-
-      const lpTokenProgram = (await (program.provider as any).connection.getAccountInfo(lpMint))?.owner?.equals(TOKEN_PROGRAM_ID)
-        ? TOKEN_PROGRAM_ID
-        : TOKEN_2022_PROGRAM_ID
       const ownerLpToken = getAssociatedTokenAddressSync(lpMint, wallet.publicKey!, false, lpTokenProgram)
-      const ownerLpInfo = await (program.provider as any).connection.getAccountInfo(ownerLpToken).catch(() => null)
+      const ownerLpInfo = await connectionRef.getAccountInfo(ownerLpToken).catch(() => null)
       const createLpAtaIx = !ownerLpInfo
         ? createAssociatedTokenAccountInstruction(
           wallet.publicKey!,
@@ -487,6 +684,13 @@ export default function DepositForm() {
           .rpc()
 
         setTxResult({ sig: tx, explorer: 'https://explorer.solana.com/tx/' + tx + '?cluster=devnet' })
+        logActivity({
+          actionType: 'Deposit',
+          poolAddress: poolAddr.toBase58(),
+          tokenPair: `${getShortTokenName(token0Str)}/${getShortTokenName(token1Str)}`,
+          signature: tx,
+          status: 'success',
+        })
         await refetchPoolStateAfterTx(tx)
         setStatus(null)
         setBusy(false)
@@ -501,17 +705,6 @@ export default function DepositForm() {
       setBusy(false)
     }
   }
-
-  const poolIdStr = toAddressString(rawState?.poolPda ?? poolFromRoute?.poolPda)
-  const ammConfigStr = toAddressString(rawState?.ammConfig)
-  const token0Str = toAddressString(rawState?.token0Mint ?? rawState?.token0)
-  const token1Str = toAddressString(rawState?.token1Mint ?? rawState?.token1)
-  const volume24h = (rawState as any)?.volume24h ?? '-'
-  const fees24h = (rawState as any)?.fees24h ?? '-'
-
-  const liquidityDisplay = (totalVault0UI != null && totalVault1UI != null)
-    ? `${totalVault0UI} / ${totalVault1UI}`
-    : '-'
 
   const refetchPoolStateAfterTx = async (signature?: string | null) => {
     try {
@@ -574,11 +767,13 @@ export default function DepositForm() {
     }
   }
 
+  const getIconLabel = (symbol: string) => symbol.slice(0, 2).toUpperCase()
+
   return (
     <div className="deposit-page">
       <div className="deposit-layout">
         <div className="deposit-main">
-          <button className="deposit-page__back" onClick={() => navigate('/liquidity')}>&lt; Back</button>
+          <button className="deposit-page__back" onClick={() => navigate(location.state?.from || '/liquidity')}>&lt; Back</button>
           <div className="deposit-page__content">
             <div className="deposit-page__form">
               {txResult && (
@@ -609,146 +804,289 @@ export default function DepositForm() {
                 <div className="deposit-header">
                   <div className="deposit-title">
                     <h2>Deposit</h2>
-                    <div className="deposit-subtitle">Pool id: {shorten(poolIdStr)}</div>
-                  </div>
-                  <div className="deposit-metrics">
-                    <div className="metric">
-                      <span>Liquidity</span>
-                      <strong>{liquidityDisplay}</strong>
-                    </div>
-                    <div className="metric">
-                      <span>Volume 24H</span>
-                      <strong>{volume24h}</strong>
-                    </div>
-                    <div className="metric">
-                      <span>Fees 24H</span>
-                      <strong>{fees24h}</strong>
+                    <div className="swap-pool-name-container">
+                      <div
+                        className="swap-pool-name-hover-wrapper"
+                        onMouseEnter={showPoolHover}
+                        onMouseLeave={hidePoolHover}
+                      >
+                        <span className="swap-pool-name-display">
+                          {getPoolDisplayName(token0Str, token1Str)}
+                        </span>
+                        {poolHoverInfo && (
+                          <div className="swap-pool-hover-card" onMouseEnter={showPoolHover} onMouseLeave={hidePoolHover}>
+                            <div className="swap-hover-row">
+                              <span><strong>Pool ID:</strong> {poolHoverInfo.poolId ?? 'unknown'}</span>
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.poolId)} title="Copy pool id" aria-label="Copy pool id">
+                                <img src={copyIcon} alt="Copy" />
+                              </button>
+                            </div>
+                            <div className="swap-hover-row">
+                              <span><strong>Token0 Mint:</strong> {poolHoverInfo.token0 ?? '-'}</span>
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token0)} title="Copy token0" aria-label="Copy token0">
+                                <img src={copyIcon} alt="Copy" />
+                              </button>
+                            </div>
+                            <div className="swap-hover-row">
+                              <span><strong>Token1 Mint:</strong> {poolHoverInfo.token1 ?? '-'}</span>
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token1)} title="Copy token1" aria-label="Copy token1">
+                                <img src={copyIcon} alt="Copy" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="deposit-body">
-                  <div className="deposit-panel">
+                  {/* Left Panel - Pool Details */}
+                  <div className="deposit-panel pool-details-panel">
                     <h3>Pool Details</h3>
-                    <div className="address-row">
-                      <span>Pool id</span>
-                      <span className="address-value">{shorten(poolIdStr)}</span>
-                      <div className="deposit-hover-wrapper" onMouseEnter={() => showHover('Pool id', poolIdStr)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!poolIdStr}
-                          aria-label="View pool id"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Pool id', poolIdStr)}
+                    <div className="pool-details-content">
+                      <div className="pool-details-header">
+                        <div className="pool-details-header__badge">
+                          {getPoolDisplayName(token0Str, token1Str)}
+                        </div>
+                        <div className="pool-details-header__fee">
+                          {activePoolFeeTier} Fee
+                        </div>
                       </div>
-                    </div>
-                    <div className="address-row">
-                      <span>Amm config</span>
-                      <span className="address-value">{shorten(ammConfigStr)}</span>
-                      <div className="deposit-hover-wrapper" onMouseEnter={() => showHover('Amm config', ammConfigStr)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!ammConfigStr}
-                          aria-label="View amm config"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Amm config', ammConfigStr)}
-                      </div>
-                    </div>
-                    <div className="address-row">
-                      <span>Token0 address</span>
-                      <span className="address-value">{shorten(token0Str)}</span>
-                      <div className="deposit-hover-wrapper" onMouseEnter={() => showHover('Token0 address', token0Str)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!token0Str}
-                          aria-label="View token0"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Token0 address', token0Str)}
-                      </div>
-                    </div>
-                    <div className="address-row">
-                      <span>Token1 address</span>
-                      <span className="address-value">{shorten(token1Str)}</span>
-                      <div className="deposit-hover-wrapper" onMouseEnter={() => showHover('Token1 address', token1Str)} onMouseLeave={hideHover}>
-                        <button
-                          className="view-btn"
-                          disabled={!token1Str}
-                          aria-label="View token1"
-                        >
-                          <img src={viewIcon} alt="View" />
-                        </button>
-                        {renderHoverCard('Token1 address', token1Str)}
+
+                      <div className="pool-details-grid">
+                        <div className="pool-details-card">
+                          <span className="pool-details-card__label">Total Pool Reserves</span>
+                          <div className="pool-details-balances">
+                            <div className="pool-balance-row">
+                              <span className="pool-balance-token">{getShortTokenName(token0Str)}</span>
+                              <span className="pool-balance-amount">{netVault0UI != null ? formatAmount(netVault0UI) : '-'}</span>
+                            </div>
+                            <div className="pool-balance-row">
+                              <span className="pool-balance-token">{getShortTokenName(token1Str)}</span>
+                              <span className="pool-balance-amount">{netVault1UI != null ? formatAmount(netVault1UI) : '-'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pool-details-card">
+                          <span className="pool-details-card__label">Your Balances</span>
+                          <div className="pool-details-balances">
+                            <div className="pool-balance-row">
+                              <span className="pool-balance-token">{getShortTokenName(token0Str)}</span>
+                              <span className="pool-balance-amount">{userBalances ? formatAmount(userBalances.token0) : '-'}</span>
+                            </div>
+                            <div className="pool-balance-row">
+                              <span className="pool-balance-token">{getShortTokenName(token1Str)}</span>
+                              <span className="pool-balance-amount">{userBalances ? formatAmount(userBalances.token1) : '-'}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
 
+                  {/* Right Panel - Add Deposit Amount */}
                   <div className="deposit-panel">
                     <h3>Add Deposit Amount</h3>
                     <form className="deposit-form" onSubmit={onSubmit}>
-                      <div className="token-row">
-                        <div className="token-info">
-                          <span className="token-label">Token A</span>
-                          <div className="token-address">
-                            <span>{shorten(token0Str)}</span>
+                      {/* Token A Input Card */}
+                      <div className={`deposit-input-card ${isInsufficientA ? 'deposit-input-card--invalid' : ''}`}>
+                        <div className="deposit-input-card-header">
+                          <span className="deposit-input-card-label">Deposit Token A</span>
+                          <div className="deposit-input-card-balance-wrap">
+                            <img src={walletIcon} alt="Wallet" className="wallet-mini-icon" />
+                            <span className={`deposit-input-card-balance-val ${isInsufficientA ? 'deposit-input-card-balance-val--invalid' : ''}`}>{userBalances?.token0 ?? '0'}</span>
+                            <button
+                              type="button"
+                              className="swap-input-card-btn"
+                              onClick={async () => {
+                                setLastEditedField('token0')
+                                setQuote(null)
+                                const val = parseBalanceValue(userBalances?.token0)
+                                const valStr = val > 0 ? val.toString() : '0'
+                                setAmountA(valStr)
+                                if (val > 0) {
+                                  try {
+                                    const nextQuote = await quoteFromToken0(valStr)
+                                    setQuote(nextQuote)
+                                    setAmountB(nextQuote.token1PostHuman)
+                                  } catch (e) {}
+                                } else {
+                                  setAmountB('')
+                                }
+                              }}
+                            >
+                              Max
+                            </button>
+                            <button
+                              type="button"
+                              className="swap-input-card-btn"
+                              onClick={async () => {
+                                setLastEditedField('token0')
+                                setQuote(null)
+                                const val = parseBalanceValue(userBalances?.token0)
+                                const valStr = val > 0 ? (val / 2).toString() : '0'
+                                setAmountA(valStr)
+                                if (val > 0) {
+                                  try {
+                                    const nextQuote = await quoteFromToken0(valStr)
+                                    setQuote(nextQuote)
+                                    setAmountB(nextQuote.token1PostHuman)
+                                  } catch (e) {}
+                                } else {
+                                  setAmountB('')
+                                }
+                              }}
+                            >
+                              50%
+                            </button>
                           </div>
                         </div>
-                        <input
-                          className="deposit-input"
-                          value={amountA}
-                          onChange={async (e) => {
-                            setLastEditedField('token0')
-                            const next = e.target.value
-                            setAmountA(next)
-                            if (!next || Number(next) <= 0) return
-                            try {
-                              const nextQuote = await quoteFromToken0(next)
-                              setQuote(nextQuote)
-                              setAmountB(nextQuote.token1PostHuman)
-                            } catch (err) { }
-                          }}
-                          placeholder="0.0"
-                        />
-                      </div>
 
-                      <div className="token-row">
-                        <div className="token-info">
-                          <span className="token-label">Token B</span>
-                          <div className="token-address">
-                            <span>{shorten(token1Str)}</span>
+                        <div className="deposit-input-card-row">
+                          {/* Non-interactive Token Pill */}
+                          <div className="deposit-token-pill">
+                            <div className="swap-token-logo-sphere deposit-token-logo-sphere deposit-token-logo-sphere--a">
+                              {getIconLabel(getShortTokenName(token0Str))}
+                            </div>
+                            <span className="swap-token-symbol deposit-token-symbol">{getShortTokenName(token0Str)}</span>
+                          </div>
+
+                          <div className="swap-input-amount-wrap deposit-input-amount-wrap">
+                            <input
+                              type="text"
+                              className="swap-input-field-borderless"
+                              value={amountA}
+                              onChange={async (e) => {
+                                setLastEditedField('token0')
+                                setQuote(null)
+                                const next = e.target.value
+                                setAmountA(next)
+                                if (!next || Number(next) <= 0) {
+                                  setAmountB('')
+                                  return
+                                }
+                                try {
+                                  const nextQuote = await quoteFromToken0(next)
+                                  setQuote(nextQuote)
+                                  setAmountB(nextQuote.token1PostHuman)
+                                } catch (err) { }
+                              }}
+                              placeholder="0"
+                            />
                           </div>
                         </div>
-                        <input
-                          className="deposit-input"
-                          value={amountB}
-                          onChange={async (e) => {
-                            setLastEditedField('token1')
-                            const next = e.target.value
-                            setAmountB(next)
-                            if (!next || Number(next) <= 0) return
-                            try {
-                              const nextQuote = await quoteFromToken1(next)
-                              setQuote(nextQuote)
-                              setAmountA(nextQuote.token0PostHuman)
-                            } catch (err) { }
-                          }}
-                          placeholder="0.0"
-                        />
                       </div>
 
-                      <div className="deposit-actions-row" style={{ textAlign: 'center' }}>
-                        <button type="submit" className="btn primary" disabled={busy || !(numeric(lastEditedField === 'token0' ? amountA : amountB) > 0) || !wallet.publicKey}>Deposit</button>
+                      {/* Divider Plus Icon between Token A and Token B (decorative) */}
+                      <div className="dex-liquidity-divider">
+                        <div className="dex-liquidity-divider__circle">
+                          <img src={plusIcon} alt="plus" className="dex-plus-icon" />
+                        </div>
                       </div>
 
-                      <div className="deposit-summary">
-                        <div>Total Deposit (est): {amountA || '-'} / {amountB || '-'}</div>
-                        <div>Editing: {lastEditedField === 'token0' ? 'Token A' : 'Token B'}</div>
-                        <div>Deposit Ratio: {depositRatio}</div>
+                      {/* Token B Input Card */}
+                      <div className={`deposit-input-card ${isInsufficientB ? 'deposit-input-card--invalid' : ''}`}>
+                        <div className="deposit-input-card-header">
+                          <span className="deposit-input-card-label">Deposit Token B</span>
+                          <div className="deposit-input-card-balance-wrap">
+                            <img src={walletIcon} alt="Wallet" className="wallet-mini-icon" />
+                            <span className={`deposit-input-card-balance-val ${isInsufficientB ? 'deposit-input-card-balance-val--invalid' : ''}`}>{userBalances?.token1 ?? '0'}</span>
+                            <button
+                              type="button"
+                              className="swap-input-card-btn"
+                              onClick={async () => {
+                                setLastEditedField('token1')
+                                setQuote(null)
+                                const val = parseBalanceValue(userBalances?.token1)
+                                const valStr = val > 0 ? val.toString() : '0'
+                                setAmountB(valStr)
+                                if (val > 0) {
+                                  try {
+                                    const nextQuote = await quoteFromToken1(valStr)
+                                    setQuote(nextQuote)
+                                    setAmountA(nextQuote.token0PostHuman)
+                                  } catch (e) {}
+                                } else {
+                                  setAmountA('')
+                                }
+                              }}
+                            >
+                              Max
+                            </button>
+                            <button
+                              type="button"
+                              className="swap-input-card-btn"
+                              onClick={async () => {
+                                setLastEditedField('token1')
+                                setQuote(null)
+                                const val = parseBalanceValue(userBalances?.token1)
+                                const valStr = val > 0 ? (val / 2).toString() : '0'
+                                setAmountB(valStr)
+                                if (val > 0) {
+                                  try {
+                                    const nextQuote = await quoteFromToken1(valStr)
+                                    setQuote(nextQuote)
+                                    setAmountA(nextQuote.token0PostHuman)
+                                  } catch (e) {}
+                                } else {
+                                  setAmountA('')
+                                }
+                              }}
+                            >
+                              50%
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="deposit-input-card-row">
+                          {/* Non-interactive Token Pill */}
+                          <div className="deposit-token-pill">
+                            <div className="swap-token-logo-sphere deposit-token-logo-sphere deposit-token-logo-sphere--b">
+                              {getIconLabel(getShortTokenName(token1Str))}
+                            </div>
+                            <span className="swap-token-symbol deposit-token-symbol">{getShortTokenName(token1Str)}</span>
+                          </div>
+
+                          <div className="swap-input-amount-wrap deposit-input-amount-wrap">
+                            <input
+                              type="text"
+                              className="swap-input-field-borderless"
+                              value={amountB}
+                              onChange={async (e) => {
+                                setLastEditedField('token1')
+                                setQuote(null)
+                                const next = e.target.value
+                                setAmountB(next)
+                                if (!next || Number(next) <= 0) {
+                                  setAmountA('')
+                                  return
+                                }
+                                try {
+                                  const nextQuote = await quoteFromToken1(next)
+                                  setQuote(nextQuote)
+                                  setAmountA(nextQuote.token0PostHuman)
+                                } catch (err) { }
+                              }}
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Deposit Ratio Box */}
+                      <div className="deposit-ratio-card deposit-ratio-card--spaced">
+                        <span className="deposit-ratio-title">Deposit Ratio</span>
+                        <div className="deposit-ratio-values">
+                          <span>{quote ? dynamicRatio : ''}</span>
+                        </div>
+                      </div>
+
+                      <div className="swap-actions-row deposit-actions-row">
+                        <button type="submit" className="swap-btn-full deposit-submit-btn" disabled={!canSubmitDeposit}>
+                          {busy ? 'Depositing...' : !wallet.publicKey ? 'Connect Wallet' : (isInsufficientA || isInsufficientB) ? 'Insufficient Balance' : 'Deposit'}
+                        </button>
                       </div>
                     </form>
                   </div>

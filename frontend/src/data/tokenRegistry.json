@@ -1,0 +1,68 @@
+[
+  {
+    "mint": "DEzz2hBGDDPRC58WRpswFjYVH2M5BbhR9q6xVeTK2qKv",
+    "symbol": "DEZZ",
+    "name": "DEZZ",
+    "color": "hsl(288 72% 58%)"
+  },
+  {
+    "mint": "888v4RuMqSWr6prebiwsYpRzYtkBGS4wm3kwuQpUeEx",
+    "symbol": "888V",
+    "name": "888V",
+    "color": "hsl(348 72% 58%)"
+  },
+  {
+    "mint": "Gr3HWAy3zKWRCro3HCkpwMw4ovKoSKYgYTpzSnEgTzyX",
+    "symbol": "GR3H",
+    "name": "GR3H",
+    "color": "hsl(182 72% 58%)"
+  },
+  {
+    "mint": "DBGEEBikDana8GhFMvBinXRHrJqDiQ2UnV6Wm1z7Bhqk",
+    "symbol": "DBGE",
+    "name": "DBGE",
+    "color": "hsl(128 72% 58%)"
+  },
+  {
+    "mint": "DPRxNTFYPNM6EbJzbtwz655gHjwihLY4Huiidy97Lyuz",
+    "symbol": "DPRX",
+    "name": "DPRX",
+    "color": "hsl(110 72% 58%)"
+  },
+  {
+    "mint": "BaVR4x6ThNyBE644sib1EEy1gMaoanmoZzCyshiYdTg1",
+    "symbol": "BAVR",
+    "name": "BAVR",
+    "color": "hsl(306 72% 58%)"
+  },
+  {
+    "mint": "67penbJ4aKKJN3NnjKujbet3HxYWpiMkFC7kXL7NPES5",
+    "symbol": "67PE",
+    "name": "67PE",
+    "color": "hsl(110 72% 58%)"
+  },
+  {
+    "mint": "BdTvzixaq1EFmDRjefVvcPZBxBkdAMQc2CuTpL6N57mj",
+    "symbol": "BDTV",
+    "name": "BDTV",
+    "color": "hsl(66 72% 58%)"
+  },
+  {
+    "mint": "7mXcUm1GNCX3NUfuFKXm2nRcNVRbJudXdDBUouJtxNUn",
+    "symbol": "7MXC",
+    "name": "7MXC",
+    "color": "hsl(205 72% 58%)"
+  },
+  {
+    "mint": "APMfA76JRFRKV4Rx4ZRyePADWJR7U1cBABFEs2h5mvwf",
+    "symbol": "APMF",
+    "name": "APMF",
+    "color": "hsl(139 72% 58%)"
+  },
+  {
+    "mint": "DjVpbXvDAqmTjSpRaggzKWevjiywQmy3V8ps162tosKy",
+    "symbol": "DJVP",
+    "name": "DJVP",
+    "color": "hsl(3 72% 58%)"
+  }
+]

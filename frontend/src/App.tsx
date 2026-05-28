@@ -17,8 +17,9 @@ function App() {
       <Header />
       <main>
         <Routes>
-          <Route path='/' element={<Swap />} />
-          <Route path="/Liquidity" element={<Liquidity />} />
+          <Route path='/' element={<Liquidity />} />
+          <Route path='/liquidity' element={<Liquidity />} />
+          <Route path="/swap" element={<Swap />} />
           <Route path="/liquidity/create" element={<InitializeLiquidity />} />
           <Route path="/liquidity/deposit" element={<DepositForm />} />
           <Route path='/liquidity/withdraw' element={<WithdrawForm />} />
@@ -26,8 +27,7 @@ function App() {
           <Route path='/portfolio/creator-fees' element={<CreatorFees />} />
           <Route path='/admin' element={<Admin />} />
           <Route path='/admin/collect-fees' element={<CollectFees />} />
-          <Route path='/Portfolio' element={<Portfolio />} />
-          <Route path='/Portfolio/creator-fees' element={<CreatorFees />} />
+          
         </Routes>
       </main>
     </>

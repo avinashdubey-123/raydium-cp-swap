@@ -6,6 +6,7 @@ import { PublicKey, SendTransactionError, SystemProgram } from '@solana/web3.js'
 import useProgram from '../../utils/useProgram'
 import { getAuthAddress } from '../../utils/pda'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
+import { logActivity } from '../../utils/activity'
 import './CreatorFees.css'
 
 
@@ -229,6 +230,13 @@ const CreatorFees = () => {
         .rpc({ commitment: 'confirmed' })
 
       setTxResult({ sig: signature, explorer: `https://explorer.solana.com/tx/${signature}?cluster=devnet` })
+      logActivity({
+        actionType: 'Fee Collection',
+        poolAddress: pool.poolPda.toBase58(),
+        tokenPair: `${pool.token0Mint.toBase58().slice(0, 4)}.../${pool.token1Mint.toBase58().slice(0, 4)}...`,
+        signature,
+        status: 'success',
+      })
       setStatus(null)
       await loadPools()
     } catch (err: any) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
@@ -6,9 +6,11 @@ import * as anchor from '@coral-xyz/anchor'
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import useProgram from '../../utils/useProgram'
 import { getPoolVaultAddress } from '../../utils/pda'
-import { formatUsd } from '../../utils/price'
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import { RoundDirection } from '../../utils/curve/calculator'
+import copyIcon from '../../assets/copy.svg'
+import viewIcon from '../../assets/view.svg'
+import { getActivities, ActivityItem } from '../../utils/activity'
 import './Portfolio.css'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
@@ -50,6 +52,29 @@ function toPublicKey(value: unknown): PublicKey | null {
   }
 }
 
+function formatTimeAgo(timestamp: number): string {
+  const diffMs = Date.now() - timestamp
+  const diffSecs = Math.floor(diffMs / 1000)
+  if (diffSecs < 60) return 'Just now'
+  const diffMins = Math.floor(diffSecs / 60)
+  if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+}
+
+// Deterministic pleasing HSL color generation based on token symbol
+function getTokenColor(symbol: string): string {
+  let hash = 0
+  for (let i = 0; i < symbol.length; i++) {
+    hash = symbol.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash) % 360
+  // Saturation: 65% for vibrancy, Lightness: 40% for beautiful colors on dark backgrounds
+  return `hsl(${hue}, 65%, 40%)`
+}
+
 const Portfolio = () => {
   const program = useProgram()
   const navigate = useNavigate()
@@ -60,12 +85,36 @@ const Portfolio = () => {
   const [error, setError] = useState<string | null>(null)
   const [positions, setPositions] = useState<ComputedPosition[]>([])
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+  
+  const [activeTab, setActiveTab] = useState<'assets' | 'liquidity' | 'activity'>('assets')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activities, setActivities] = useState<ActivityItem[]>([])
+  const [copiedPoolPda, setCopiedPoolPda] = useState<string | null>(null)
+
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedPoolPda(text)
+      setTimeout(() => setCopiedPoolPda(null), 1500)
+    } catch (err) {
+      console.error('Failed to copy pool address:', err)
+    }
+  }
+
+  const handlePoolCountClick = (tokenSymbol: string) => {
+    setActiveTab('liquidity')
+    setSearchQuery(tokenSymbol)
+    setTimeout(() => {
+      searchInputRef.current?.focus()
+    }, 100)
+  }
 
   const getPools = async (): Promise<Map<string, any>> => {
     try {
       if (!program) throw new Error('Program not ready')
 
-      // Fetch all PoolState accounts using a loose namespace access since Program is untyped here.
       const poolAccountNamespace = (program.account as any).poolState
       if (!poolAccountNamespace?.all) return new Map()
       const poolAccounts = await poolAccountNamespace.all()
@@ -180,7 +229,6 @@ const Portfolio = () => {
 
         if (!poolState) continue
 
-        // Fetch vault amounts from the blockchain
         const [vault0PDA] = await getPoolVaultAddress(lpPos.poolPda, lpPos.token0Mint, PROGRAM_ID)
         const [vault1PDA] = await getPoolVaultAddress(lpPos.poolPda, lpPos.token1Mint, PROGRAM_ID)
 
@@ -190,15 +238,12 @@ const Portfolio = () => {
         const vault0Balance = new anchor.BN(vault0Account.value.amount || '0')
         const vault1Balance = new anchor.BN(vault1Account.value.amount || '0')
 
-        // LP token supply
         const rawLpSupply = poolState.lpSupply ?? poolState.lp_supply ?? 0
         const lpTokenSupply = new anchor.BN(rawLpSupply)
         if (lpTokenSupply.lte(new anchor.BN(0))) continue
 
-        // Convert to BN for calculations
         const lpAmountBN = new anchor.BN(lpPos.lpTokenAmount * Math.pow(10, lpPos.lpTokenDecimals))
 
-        // Use ConstantProductCurve to compute underlying tokens
         const { tokenAmount0, tokenAmount1 } = ConstantProductCurve.lpTokensToTradingTokens(
           lpAmountBN,
           lpTokenSupply,
@@ -207,7 +252,6 @@ const Portfolio = () => {
           RoundDirection.Floor
         )
 
-        // Convert back to UI amounts (apply decimals)
         const token0Decimals = poolState.mint0Decimals ?? poolState.mint_0_decimals ?? poolState.mintDecimals0 ?? 6
         const token1Decimals = poolState.mint1Decimals ?? poolState.mint_1_decimals ?? poolState.mintDecimals1 ?? 6
 
@@ -228,7 +272,6 @@ const Portfolio = () => {
         })
       } catch (err) {
         console.error('Failed to compute position:', err)
-        // Include position with 0 values if computation fails
         computed.push({
           ...lpPos,
           token0Amount: 0,
@@ -252,11 +295,8 @@ const Portfolio = () => {
         setError(null)
 
         const loadedPools = await getPools()
-
         const tokenAccounts = await getUserTokenAccounts()
-
         const lpPositions = filterLPs(tokenAccounts, loadedPools)
-
         const computedPositions = await computePositions(lpPositions, loadedPools)
 
         setPositions(computedPositions)
@@ -272,37 +312,41 @@ const Portfolio = () => {
     loadPortfolio()
   }, [program, wallet.publicKey, connection])
 
+  useEffect(() => {
+    if (activeTab === 'activity') {
+      setActivities(getActivities())
+    }
+  }, [activeTab])
+
   if (!wallet.connected) {
-    return <div className="portfolio-container">Please connect your wallet</div>
+    return <div className="portfolio-container-empty">Please connect your wallet</div>
   }
 
   if (loading) {
-    return <div className="portfolio-container">Loading portfolio...</div>
+    return (
+      <div className="portfolio-container-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading portfolio...</p>
+      </div>
+    )
   }
 
   if (error) {
-    return <div className="portfolio-container error">Error: {error}</div>
+    return <div className="portfolio-container error-state">Error: {error}</div>
   }
 
-  const totalPortfolioValue = positions
-    .reduce((sum, pos) => sum + (pos.totalValue || 0), 0)
-
   const tokenSummary = (() => {
-    const map = new Map<string, { symbol: string; amount: number; value: number; pools: Set<string> }>()
+    const map = new Map<string, { symbol: string; amount: number; pools: Set<string> }>()
     for (const pos of positions) {
       const poolKey = pos.poolPda.toBase58()
       const t0 = pos.token0Symbol || 'TOKEN0'
       const t1 = pos.token1Symbol || 'TOKEN1'
-      const t0Value = pos.token0Value ?? 0
-      const t1Value = pos.token1Value ?? 0
-      const t0Entry = map.get(t0) || { symbol: t0, amount: 0, value: 0, pools: new Set<string>() }
+      const t0Entry = map.get(t0) || { symbol: t0, amount: 0, pools: new Set<string>() }
       t0Entry.amount += pos.token0Amount
-      t0Entry.value += t0Value
       t0Entry.pools.add(poolKey)
       map.set(t0, t0Entry)
-      const t1Entry = map.get(t1) || { symbol: t1, amount: 0, value: 0, pools: new Set<string>() }
+      const t1Entry = map.get(t1) || { symbol: t1, amount: 0, pools: new Set<string>() }
       t1Entry.amount += pos.token1Amount
-      t1Entry.value += t1Value
       t1Entry.pools.add(poolKey)
       map.set(t1, t1Entry)
     }
@@ -310,15 +354,10 @@ const Portfolio = () => {
       .map((entry) => ({
         symbol: entry.symbol,
         amount: entry.amount,
-        value: entry.value,
         poolCount: entry.pools.size,
       }))
-      .sort((a, b) => b.value - a.value)
+      .sort((a, b) => b.amount - a.amount)
   })()
-
-  const totalPoolsInvested = positions.length
-  const totalTokensTracked = tokenSummary.length
-  const activeRows = Object.values(expandedRows).filter(Boolean).length
 
   const toggleRow = (rowKey: string) => {
     setExpandedRows((current) => ({
@@ -340,6 +379,7 @@ const Portfolio = () => {
         lpSupply: pos.lpSupplyRaw,
         decimals0: pos.decimals0,
         decimals1: pos.decimals1,
+        from: '/portfolio', // Pass back-navigation context
       },
     })
   }
@@ -362,177 +402,357 @@ const Portfolio = () => {
     })
   }
 
+  const filteredPositions = positions.filter((pos) => {
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase().trim()
+    const pair = `${pos.token0Symbol}/${pos.token1Symbol}`.toLowerCase()
+    const poolAddr = pos.poolPda.toBase58().toLowerCase()
+    const sym0 = (pos.token0Symbol || '').toLowerCase()
+    const sym1 = (pos.token1Symbol || '').toLowerCase()
+    return (
+      pair.includes(query) ||
+      poolAddr.includes(query) ||
+      sym0.includes(query) ||
+      sym1.includes(query)
+    )
+  })
+
   return (
-    <div className="portfolio-container">
-      <div className="portfolio-hero">
-        <h1 className='portfolio-title'>My Portfolio</h1>
-        <p>Wallet Overview</p>
+    <div className="portfolio-wrapper">
+      <div className="portfolio-header-section">
+        <h1 className="portfolio-title-new">Portfolio</h1>
+        <p className="portfolio-subtitle">Manage and track your liquidity pools, tokens, and recent activities.</p>
       </div>
 
-      <div className="portfolio-overview">
-        <div className="overview-card">
-          <div className="overview-header-row">
-            <div>
-              <div className="overview-kicker">Invested Assets</div>
-              <div className="overview-header-title">By Token</div>
-            </div>
-            <div className="overview-header-meta">{totalTokensTracked} tokens tracked</div>
-          </div>
-          <div className="overview-summary-stats">
-            <div>
-              <span className="overview-stat-label">Total invested</span>
-              <strong>{formatUsd(totalPortfolioValue)}</strong>
-            </div>
-            <div>
-              <span className="overview-stat-label">Pools invested in</span>
-              <strong>{totalPoolsInvested}</strong>
-            </div>
-          </div>
-          <div className="overview-body">
-            <div className="overview-list overview-token-list">
-              {tokenSummary.length === 0 ? (
-                <div className="overview-empty">No positions yet</div>
-              ) : (
-                tokenSummary.slice(0, 6).map((token) => (
-                  <div className="overview-row token-summary-row" key={token.symbol}>
-                    <div className="overview-dot" />
-                    <div className="overview-label">{token.symbol}</div>
-                    <div className="overview-value">{token.amount.toFixed(4)}</div>
-                    <div className="overview-percent">{token.poolCount} pools</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+      {/* Navigation Tabs */}
+      <div className="portfolio-navigation-panel">
+        <div className="portfolio-tab-buttons">
+          <button
+            className={`portfolio-tab-btn ${activeTab === 'assets' ? 'active' : ''}`}
+            onClick={() => setActiveTab('assets')}
+          >
+            Invested Assets
+          </button>
+          <button
+            className={`portfolio-tab-btn ${activeTab === 'liquidity' ? 'active' : ''}`}
+            onClick={() => setActiveTab('liquidity')}
+          >
+            My Liquidity
+          </button>
+          <button
+            className={`portfolio-tab-btn ${activeTab === 'activity' ? 'active' : ''}`}
+            onClick={() => setActiveTab('activity')}
+          >
+            Activity
+          </button>
         </div>
 
-        <div className="overview-card">
-          <div className="overview-header-row">
-            <div>
-              <div className="overview-kicker">Invested assets</div>
-              <div className="overview-header-title">By Value</div>
-            </div>
-            <div className="overview-header-meta">{activeRows} expanded rows</div>
-          </div>
-          <div className="overview-summary-stats overview-summary-stats-alt">
-            <div>
-              <span className="overview-stat-label">Portfolio value</span>
-              <strong>{formatUsd(totalPortfolioValue)}</strong>
-            </div>
-            <div>
-              <span className="overview-stat-label">Average per pool</span>
-              <strong>{formatUsd(totalPoolsInvested > 0 ? totalPortfolioValue / totalPoolsInvested : 0)}</strong>
-            </div>
-          </div>
-          <div className="overview-body">
-            <div className="overview-list overview-token-list">
-              {tokenSummary.length === 0 ? (
-                <div className="overview-empty">No invested tokens yet</div>
-              ) : (
-                tokenSummary.slice(0, 6).map((token) => (
-                  <div className="overview-row token-summary-row" key={`${token.symbol}-value`}>
-                    <div className="overview-dot" />
-                    <div className="overview-label">{token.symbol}</div>
-                    <div className="overview-value">{formatUsd(token.value)}</div>
-                    <div className="overview-percent">{token.poolCount} pools</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="portfolio-section">
-        <div className="section-header">
-          <h2>My positions</h2>
-          <div className="section-actions">
-            <button className="section-cta" type="button" onClick={() => navigate('/portfolio/creator-fees')}>
-              Collect creator fees
-            </button>
-          </div>
-        </div>
-
-        {positions.length === 0 ? (
-          <div className="positions-empty">You do not have any positions yet.</div>
-        ) : (
-          <div className="positions-table">
-            <div className="positions-table-head">
-              <span>Asset</span>
-              <span>LP</span>
-              <span>Token split</span>
-              <span>Value</span>
-              <span />
-            </div>
-            {positions.map((pos, idx) => (
-              <div
-                key={`${pos.lpMint.toBase58()}-${idx}`}
-                className={`position-card ${expandedRows[`${pos.lpMint.toBase58()}-${idx}`] ? 'expanded' : ''}`}
-              >
-                <div className="position-header position-row-summary">
-                  <div className="position-row-asset">
-                    <div className="position-pair">
-                      {pos.token0Symbol}/{pos.token1Symbol || 'Unknown Pair'}
-                    </div>
-                    <div className="position-sub">Pool {pos.poolPda.toBase58().slice(0, 8)}...</div>
-                  </div>
-                  <div className="position-row-lp">{pos.lpTokenAmount.toFixed(4)}</div>
-                  <div className="position-row-split">
-                    <span>{pos.token0Amount.toFixed(4)} {pos.token0Symbol}</span>
-                    <span>{pos.token1Amount.toFixed(4)} {pos.token1Symbol}</span>
-                  </div>
-                  <div className="position-row-value">{formatUsd(pos.totalValue)}</div>
-                  <button
-                    className="position-expand"
-                    type="button"
-                    aria-expanded={Boolean(expandedRows[`${pos.lpMint.toBase58()}-${idx}`])}
-                    aria-label="Toggle position details"
-                    onClick={() => toggleRow(`${pos.lpMint.toBase58()}-${idx}`)}
-                  >
-                    <span className={`position-expand-icon ${expandedRows[`${pos.lpMint.toBase58()}-${idx}`] ? 'open' : ''}`} />
-                  </button>
-                </div>
-
-                <div className="position-details position-details-collapsed">
-                  <div className="token-row">
-                    <span className="label">{pos.token0Symbol}</span>
-                    <span className="amount">{pos.token0Amount.toFixed(6)}</span>
-                    <span className="value">{formatUsd(pos.token0Value)}</span>
-                  </div>
-                  <div className="token-row">
-                    <span className="label">{pos.token1Symbol}</span>
-                    <span className="amount">{pos.token1Amount.toFixed(6)}</span>
-                    <span className="value">{formatUsd(pos.token1Value)}</span>
-                  </div>
-                </div>
-
-                {expandedRows[`${pos.lpMint.toBase58()}-${idx}`] ? (
-                  <div className="position-details-expanded">
-                    <div className="position-expander-grid">
-                      <div className="position-expander-field">
-                        <span className="field-label">Token 0</span>
-                        <span className="field-value">{pos.token0Amount.toFixed(6)} {pos.token0Symbol}</span>
-                      </div>
-                      <div className="position-expander-field">
-                        <span className="field-label">Token 1</span>
-                        <span className="field-value">{pos.token1Amount.toFixed(6)} {pos.token1Symbol}</span>
-                      </div>
-                      <div className="position-expander-field">
-                        <span className="field-label">Token value</span>
-                        <span className="field-value">{formatUsd(pos.totalValue)}</span>
-                      </div>
-                      <div className="position-expander-actions">
-                        <button className="position-action minus" onClick={() => openWithdraw(pos)} aria-label="Withdraw liquidity">-</button>
-                        <button className="position-action plus" onClick={() => openDeposit(pos)} aria-label="Add liquidity">+</button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
+        {activeTab === 'liquidity' && (
+          <button
+            className="collect-fees-btn"
+            type="button"
+            onClick={() => navigate('/portfolio/creator-fees')}
+          >
+            Collect creator fees
+          </button>
         )}
       </div>
+
+      {/* Invested Assets Tab */}
+      {activeTab === 'assets' && (
+        <div className="invested-assets-tab-content">
+          {tokenSummary.length === 0 ? (
+            <div className="invested-assets-empty-new">No active investments found.</div>
+          ) : (
+            <div className="assets-horizontal-rows">
+              {tokenSummary.map((token) => {
+                const avatar = token.symbol.slice(0, 2).toUpperCase()
+                return (
+                  <div className="asset-row-card" key={token.symbol}>
+                    <div className="asset-row-left-details">
+                      <div className="asset-row-avatar-badge" style={{ backgroundColor: getTokenColor(token.symbol), color: '#ffffff', borderColor: 'transparent' }}>{avatar}</div>
+                      <div className="asset-row-token-meta">
+                        <span className="asset-row-token-symbol">{token.symbol}</span>
+                        <span className="asset-row-token-amount">{token.amount.toFixed(4)} tokens</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="asset-row-pool-count-btn"
+                      onClick={() => handlePoolCountClick(token.symbol)}
+                      title={`Filter positions by ${token.symbol}`}
+                    >
+                      {token.poolCount} pool{token.poolCount > 1 ? 's' : ''} <span className="arrow-indicator-inline">→</span>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* My Liquidity Tab */}
+      {activeTab === 'liquidity' && (
+        <div className="liquidity-tab-content">
+          <div className="liquidity-search-wrapper">
+            <input
+              ref={searchInputRef}
+              type="text"
+              className="liquidity-search-input"
+              placeholder="Search by token symbol, pair name, or pool address..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="clear-search-btn"
+                onClick={() => setSearchQuery('')}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          <div className="positions-list-container">
+            {filteredPositions.length === 0 ? (
+              <div className="positions-empty-card">
+                {searchQuery ? 'No liquidity positions matched your search.' : 'You do not have any active liquidity positions yet.'}
+              </div>
+            ) : (
+              <div className="positions-cards-list">
+                {filteredPositions.map((pos, idx) => {
+                  const poolAddrStr = pos.poolPda.toBase58()
+                  const shortAddr = `${poolAddrStr.slice(0, 6)}...${poolAddrStr.slice(-6)}`
+                  const isExpanded = !!expandedRows[`${pos.lpMint.toBase58()}-${idx}`]
+                  const avatar0 = pos.token0Symbol ? pos.token0Symbol.slice(0, 2).toUpperCase() : 'T0'
+                  const avatar1 = pos.token1Symbol ? pos.token1Symbol.slice(0, 2).toUpperCase() : 'T1'
+
+                  return (
+                    <div
+                      key={`${pos.lpMint.toBase58()}-${idx}`}
+                      className={`liquidity-card-v2 ${isExpanded ? 'expanded' : ''}`}
+                    >
+                      <div className="liquidity-card-header-v2">
+                        <div className="liquidity-card-pair-row">
+                          <div className="avatar-badges-group">
+                            <span className="token-avatar-badge badge-0" style={{ backgroundColor: getTokenColor(pos.token0Symbol || 'T0'), color: '#ffffff', borderColor: 'transparent' }}>{avatar0}</span>
+                            <span className="token-avatar-badge badge-1" style={{ backgroundColor: getTokenColor(pos.token1Symbol || 'T1'), color: '#ffffff', borderColor: 'transparent' }}>{avatar1}</span>
+                          </div>
+                          <span className="pair-title-v2">
+                            {pos.token0Symbol} / {pos.token1Symbol || 'Unknown'}
+                          </span>
+                        </div>
+
+                        <div className="liquidity-card-composition">
+                          <div className="composition-item-v2">
+                            <span className="comp-amount">{pos.token0Amount.toFixed(4)}</span>
+                            <span className="comp-symbol">{pos.token0Symbol}</span>
+                          </div>
+                          <div className="composition-item-v2">
+                            <span className="comp-amount">{pos.token1Amount.toFixed(4)}</span>
+                            <span className="comp-symbol">{pos.token1Symbol}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="liquidity-card-actions-v2">
+                        <div className="card-buttons-left">
+                          <button
+                            className="liquidity-action-btn-v2 deposit-btn"
+                            onClick={() => openDeposit(pos)}
+                          >
+                            Deposit
+                          </button>
+                          <button
+                            className="liquidity-action-btn-v2 withdraw-btn"
+                            onClick={() => openWithdraw(pos)}
+                          >
+                            Withdraw
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          className={`view-details-toggle-btn ${isExpanded ? 'active' : ''}`}
+                          onClick={() => toggleRow(`${pos.lpMint.toBase58()}-${idx}`)}
+                        >
+                          {isExpanded ? 'Hide Details ▲' : 'View Details ▼'}
+                        </button>
+                      </div>
+
+                      {/* Collapsible View Details Section */}
+                      {isExpanded && (
+                        <div className="liquidity-card-details-panel-v2">
+                          <div className="details-section-grid-v2">
+                            <div className="details-info-row-v2">
+                              <span className="details-label">Pool Address</span>
+                              <div className="details-value-with-actions">
+                                <span className="details-val-mono" title={poolAddrStr}>{shortAddr}</span>
+                                <button
+                                  type="button"
+                                  className="details-icon-btn copy-btn"
+                                  onClick={() => void copyToClipboard(poolAddrStr)}
+                                  title="Copy Pool Address"
+                                >
+                                  {copiedPoolPda === poolAddrStr ? (
+                                    <span className="copy-status-inline">Copied!</span>
+                                  ) : (
+                                    <img src={copyIcon} alt="Copy" className="btn-icon-tiny" />
+                                  )}
+                                </button>
+                                <a
+                                  href={`https://explorer.solana.com/address/${poolAddrStr}?cluster=devnet`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="details-icon-btn explorer-btn"
+                                  title="Open in Solana Explorer"
+                                >
+                                  <img src={viewIcon} alt="View" className="btn-icon-tiny" />
+                                </a>
+                              </div>
+                            </div>
+
+                            <div className="details-info-row-v2">
+                              <span className="details-label">{pos.token0Symbol} Mint</span>
+                              <div className="details-value-with-actions">
+                                <span className="details-val-mono" title={pos.token0Mint.toBase58()}>
+                                  {pos.token0Mint.toBase58().slice(0, 6)}...{pos.token0Mint.toBase58().slice(-6)}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="details-icon-btn copy-btn"
+                                  onClick={() => void copyToClipboard(pos.token0Mint.toBase58())}
+                                  title={`Copy ${pos.token0Symbol} Mint`}
+                                >
+                                  {copiedPoolPda === pos.token0Mint.toBase58() ? (
+                                    <span className="copy-status-inline">Copied!</span>
+                                  ) : (
+                                    <img src={copyIcon} alt="Copy" className="btn-icon-tiny" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="details-info-row-v2">
+                              <span className="details-label">{pos.token1Symbol} Mint</span>
+                              <div className="details-value-with-actions">
+                                <span className="details-val-mono" title={pos.token1Mint.toBase58()}>
+                                  {pos.token1Mint.toBase58().slice(0, 6)}...{pos.token1Mint.toBase58().slice(-6)}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="details-icon-btn copy-btn"
+                                  onClick={() => void copyToClipboard(pos.token1Mint.toBase58())}
+                                  title={`Copy ${pos.token1Symbol} Mint`}
+                                >
+                                  {copiedPoolPda === pos.token1Mint.toBase58() ? (
+                                    <span className="copy-status-inline">Copied!</span>
+                                  ) : (
+                                    <img src={copyIcon} alt="Copy" className="btn-icon-tiny" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="details-info-row-v2">
+                              <span className="details-label">LP Token Account</span>
+                              <span className="details-val-mono" title={pos.lpTokenAccount.toBase58()}>
+                                {pos.lpTokenAccount.toBase58().slice(0, 6)}...{pos.lpTokenAccount.toBase58().slice(-6)}
+                              </span>
+                            </div>
+
+                            <div className="details-info-row-v2">
+                              <span className="details-label">LP Token Balance</span>
+                              <span className="details-val-mono">{pos.lpTokenAmount.toFixed(6)}</span>
+                            </div>
+
+                            <div className="details-info-row-v2">
+                              <span className="details-label">Exact {pos.token0Symbol} Balance</span>
+                              <span className="details-val-mono">{pos.token0Amount.toFixed(6)}</span>
+                            </div>
+
+                            <div className="details-info-row-v2">
+                              <span className="details-label">Exact {pos.token1Symbol} Balance</span>
+                              <span className="details-val-mono">{pos.token1Amount.toFixed(6)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Activity Tab */}
+      {activeTab === 'activity' && (
+        <div className="activity-list-container">
+          {activities.length === 0 ? (
+            <div className="activity-empty-card">No session history tracked in this session yet.</div>
+          ) : (
+            <div className="activity-timeline-list">
+              {activities.map((act) => {
+                const timeStr = formatTimeAgo(act.timestamp)
+                const txSig = act.signature
+                const shortSig = txSig ? `${txSig.slice(0, 8)}...${txSig.slice(-8)}` : ''
+                return (
+                  <div key={act.id} className="activity-timeline-card">
+                    <div className="activity-main-info">
+                      <div className="activity-icon-container">
+                        {act.actionType === 'Swap' && '🔄'}
+                        {act.actionType === 'Deposit' && '📥'}
+                        {act.actionType === 'Withdraw' && '📤'}
+                        {act.actionType === 'Pool Creation' && '➕'}
+                        {act.actionType === 'Fee Collection' && '🪙'}
+                      </div>
+                      <div className="activity-details-col">
+                        <div className="activity-action-title">
+                          <span className="action-type-bold">{act.actionType}</span>
+                          <span className="action-pair-lbl">{act.tokenPair}</span>
+                        </div>
+                        <div className="activity-meta-details">
+                          <span className="activity-timestamp">{timeStr}</span>
+                          {act.poolAddress && (
+                            <span className="activity-pool-pda-short" title={act.poolAddress}>
+                              Pool: {act.poolAddress.slice(0, 6)}...{act.poolAddress.slice(-6)}
+                            </span>
+                          )}
+                          {txSig && (
+                            <span className="activity-sig-short" title={txSig}>
+                              Sig: {shortSig}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="activity-status-col">
+                      <span className={`status-badge-pill ${act.status}`}>
+                        {act.status}
+                      </span>
+                      {txSig && (
+                        <a
+                          href={`https://explorer.solana.com/tx/${txSig}?cluster=devnet`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="activity-explorer-link-btn"
+                        >
+                          Open in Explorer
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
