@@ -483,6 +483,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  min-width: 18px;
+  min-height: 18px;
   transition: all 0.12s ease;
 }
 
@@ -1189,12 +1191,22 @@
   display: grid;
   place-items: center;
   border-radius: 4px;
+  min-width: 18px;
+  min-height: 18px;
   transition: all 0.12s ease;
 }
 
 .dex-action-btn:hover {
   color: var(--if-accent);
   background: rgba(57, 208, 216, 0.08);
+}
+
+.copy-status-inline {
+  color: var(--if-accent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* Empty state */

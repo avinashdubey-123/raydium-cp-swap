@@ -618,6 +618,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 28px;
+  min-height: 24px;
   transition: transform 0.08s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 
@@ -634,6 +636,13 @@
 .swap-copy-btn:active {
   transform: scale(0.96);
   box-shadow: 0 0 0 2px rgba(57, 162, 194, 0.25);
+}
+
+.copy-status-inline {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {
@@ -1086,4 +1095,3 @@
 .swap-pool-search-clear:hover {
   color: #ffffff;
 }
-

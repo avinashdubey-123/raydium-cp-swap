@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey, SystemProgram } from '@solana/web3.js'
@@ -22,6 +22,7 @@ function getTokenColor(symbol: string): string {
 
 function PoolDisplay({ poolAddr, token0, token1 }: { poolAddr: string; token0?: string; token1?: string }) {
   const [hoverInfo, setHoverInfo] = useState<{ poolId?: string | null; token0?: string | null; token1?: string | null } | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const hoverTimeout = useRef<number | null>(null)
   const clearHoverTimeout = () => {
     if (hoverTimeout.current != null) {
@@ -40,9 +41,13 @@ function PoolDisplay({ poolAddr, token0, token1 }: { poolAddr: string; token0?: 
     hoverTimeout.current = window.setTimeout(() => setHoverInfo(null), 150)
   }
 
-  const copyText = async (value?: string | null) => {
+  const copyText = async (value?: string | null, key = value ?? '') => {
     if (!value) return
-    try { await navigator.clipboard.writeText(value) } catch (e) { }
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(null), 1500)
+    } catch (e) { }
   }
 
   const name0 = token0 ? getShortTokenName(token0) : 'UNKN'
@@ -76,20 +81,20 @@ function PoolDisplay({ poolAddr, token0, token1 }: { poolAddr: string; token0?: 
           <div className="lp-hover-card">
             <div className="lp-hover-row">
               <span><strong>Pool id:</strong> {hoverInfo.poolId ?? 'unknown'}</span>
-              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.poolId) }} title="Copy pool id">
-                <img src={copyIcon} alt="Copy" />
+              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.poolId, 'pool') }} title="Copy pool id">
+                {copiedKey === 'pool' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
               </button>
             </div>
             <div className="lp-hover-row">
               <span><strong>token0:</strong> {hoverInfo.token0 ?? '-'}</span>
-              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.token0) }} title="Copy token0">
-                <img src={copyIcon} alt="Copy" />
+              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.token0, 'token0') }} title="Copy token0">
+                {copiedKey === 'token0' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
               </button>
             </div>
             <div className="lp-hover-row">
               <span><strong>token1:</strong> {hoverInfo.token1 ?? '-'}</span>
-              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.token1) }} title="Copy token1">
-                <img src={copyIcon} alt="Copy" />
+              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.token1, 'token1') }} title="Copy token1">
+                {copiedKey === 'token1' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
               </button>
             </div>
           </div>
@@ -131,7 +136,7 @@ function AdminAddress({ address, label }: { address: string; label?: string }) {
     >
       <span className="admin-addr-short" title={address}>{short}</span>
       <button className="admin-copy-btn" onClick={copy} title="Copy address" aria-label="Copy address">
-        <img src={copyIcon} alt="Copy" style={{ width: 12, height: 12, opacity: 0.7 }} />
+        {copied ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" style={{ width: 12, height: 12, opacity: 0.7 }} />}
       </button>
       {hover && (
         <span className="admin-hover-card" onMouseEnter={showHover} onMouseLeave={hideHover}>
@@ -396,7 +401,7 @@ const Admin = () => {
     setError(null)
     setSuccess(null)
     try {
-      const permissionAuthority = new PublicKey(whitelistOwner)
+      const permissionAuthority = new PublicKey(whitelistOwner.trim())
       const [permission] = await getPermissionPdaAddress(permissionAuthority, program.programId)
 
       const sig = await (program.methods as any)
@@ -420,26 +425,28 @@ const Admin = () => {
     }
   }
 
-  const handleRemoveFromWhitelist = async (user: PublicKey) => {
+  const handleRemoveFromWhitelist = async (user: PublicKey | string) => {
     if (!program || !wallet.publicKey) return
+    const permissionAuthority = typeof user === 'string' ? new PublicKey(user.trim()) : user
     setLoading(true)
     setError(null)
     setSuccess(null)
     try {
-      const [permission] = await getPermissionPdaAddress(user, program.programId)
+      const [permission] = await getPermissionPdaAddress(permissionAuthority, program.programId)
 
       const sig = await (program.methods as any)
         .closePermissionPda()
         .accounts({
           owner: wallet.publicKey,
-          permissionAuthority: user,
+          permissionAuthority,
           permission,
           systemProgram: SystemProgram.programId,
         })
         .rpc()
 
       setTxResult({ sig, explorer: `https://explorer.solana.com/tx/${sig}?cluster=devnet` })
-      setSuccess(`User ${user.toBase58()} removed from whitelist`)
+      setSuccess(`User ${permissionAuthority.toBase58()} removed from whitelist`)
+      if (typeof user === 'string') setWhitelistOwner('')
       await refreshActiveTab()
     } catch (err: any) {
       setError(err.message || 'Failed to remove user')
@@ -506,6 +513,10 @@ const Admin = () => {
 
   const isAdmin = wallet.publicKey?.equals(ADMIN_ID)
 
+  useEffect(() => {
+    refreshActiveTab()
+  }, [location.key])
+
   if (!wallet.connected) {
     return <div className="admin-page">Please connect your wallet</div>
   }
@@ -513,10 +524,6 @@ const Admin = () => {
   if (!isAdmin && wallet.publicKey) {
     return <div className="admin-page">Access Denied. You are not the admin.</div>
   }
-
-  useEffect(() => {
-  refreshActiveTab()
-}, [location.key])
 
   return (
     <div className="admin-page">
@@ -687,7 +694,7 @@ const Admin = () => {
 
       {activeTab === 'whitelist' && (
         <div className="admin-section">
-          <h2>Whitelist User</h2>
+          <h2>Whitelist/Remove User</h2>
           <div className="admin-form">
             <div className="admin-field">
               <label>User Wallet Address</label>
@@ -696,6 +703,13 @@ const Admin = () => {
           </div>
           <div className="admin-actions">
             <button className="admin-btn admin-btn-primary" onClick={handleWhitelistUser} disabled={loading}>Whitelist User</button>
+            <button
+              className="admin-btn admin-btn-secondary"
+              onClick={() => handleRemoveFromWhitelist(whitelistOwner)}
+              disabled={loading || !whitelistOwner.trim()}
+            >
+              Remove User
+            </button>
           </div>
 
           <h2>Whitelisted Users</h2>

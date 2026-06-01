@@ -143,9 +143,15 @@ function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; amm
     hoverTimeout.current = window.setTimeout(() => setHoverInfo(null), 150)
   }
 
-  const copyText = async (value?: string | null) => {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+
+  const copyText = async (value?: string | null, key = value ?? '') => {
     if (!value) return
-    try { await navigator.clipboard.writeText(value) } catch (e) { }
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(null), 1500)
+    } catch (e) { }
   }
 
   const onDeposit = () => {
@@ -186,20 +192,20 @@ function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; amm
               <div className="lp-hover-card">
                 <div className="lp-hover-row">
                   <span><strong>Pool id:</strong> {hoverInfo.poolId ?? 'unknown'}</span>
-                  <button className="lp-copy-btn" onClick={() => copyText(hoverInfo.poolId)} title="Copy pool id" aria-label="Copy pool id">
-                    <img src={copyIcon} alt="Copy" />
+                  <button className="lp-copy-btn" onClick={() => copyText(hoverInfo.poolId, 'pool')} title="Copy pool id" aria-label="Copy pool id">
+                    {copiedKey === 'pool' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
                   </button>
                 </div>
                 <div className="lp-hover-row">
                   <span><strong>token0:</strong> {hoverInfo.token0 ?? '-'}</span>
-                  <button className="lp-copy-btn" onClick={() => copyText(hoverInfo.token0)} title="Copy token0" aria-label="Copy token0">
-                    <img src={copyIcon} alt="Copy" />
+                  <button className="lp-copy-btn" onClick={() => copyText(hoverInfo.token0, 'token0')} title="Copy token0" aria-label="Copy token0">
+                    {copiedKey === 'token0' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
                   </button>
                 </div>
                 <div className="lp-hover-row">
                   <span><strong>token1:</strong> {hoverInfo.token1 ?? '-'}</span>
-                  <button className="lp-copy-btn" onClick={() => copyText(hoverInfo.token1)} title="Copy token1" aria-label="Copy token1">
-                    <img src={copyIcon} alt="Copy" />
+                  <button className="lp-copy-btn" onClick={() => copyText(hoverInfo.token1, 'token1')} title="Copy token1" aria-label="Copy token1">
+                    {copiedKey === 'token1' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
                   </button>
                 </div>
               </div>

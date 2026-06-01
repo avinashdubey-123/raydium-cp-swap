@@ -16,7 +16,7 @@
   margin: 0 auto;
   min-height: 100vh;
   color: var(--admin-text);
-  
+
   --configs-grid-cols: 0.4fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr 1fr 1fr 44px;
   --whitelist-grid-cols: 2fr 2fr 1fr;
   --pools-grid-cols: 1.5fr 2fr 1fr 44px;
@@ -25,7 +25,7 @@
 
 .admin-hero {
   display: flex;
-  justify-content:left;
+  justify-content: left;
   align-items: flex-start;
   margin-bottom: 28px;
   flex-wrap: wrap;
@@ -95,8 +95,15 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .admin-section h2 {
@@ -130,7 +137,8 @@
   letter-spacing: 0.05em;
 }
 
-.admin-field input, .admin-field select {
+.admin-field input,
+.admin-field select {
   background: #0d1425;
   border: 1px solid var(--admin-border);
   border-radius: 12px;
@@ -229,15 +237,23 @@
   align-items: center;
 }
 
-.admin-grid-cell.center {
-  justify-content: center;
-  text-align: center;
+.configs-grid {
+  grid-template-columns: var(--configs-grid-cols);
 }
 
-.configs-grid { grid-template-columns: var(--configs-grid-cols); }
-.whitelist-grid { grid-template-columns: var(--whitelist-grid-cols); }
-.pools-grid { grid-template-columns: var(--pools-grid-cols); }
-.fees-grid { grid-template-columns: var(--fees-grid-cols); }
+.whitelist-grid {
+  grid-template-columns: var(--whitelist-grid-cols);
+  text-align: left
+}
+
+
+.pools-grid {
+  grid-template-columns: var(--pools-grid-cols);
+}
+
+.fees-grid {
+  grid-template-columns: var(--fees-grid-cols);
+}
 
 
 .admin-status-pill {
@@ -268,8 +284,15 @@
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateX(-10px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .admin-banner.success {
@@ -289,13 +312,13 @@
     flex-wrap: wrap;
     width: 100%;
   }
-  
+
   .admin-tab {
     flex: 1;
     text-align: center;
     padding: 10px 12px;
   }
-  
+
   .admin-section {
     padding: 24px;
   }
@@ -370,8 +393,15 @@
 }
 
 @keyframes slideDown {
-  from { height: 0; opacity: 0; }
-  to { height: auto; opacity: 1; }
+  from {
+    height: 0;
+    opacity: 0;
+  }
+
+  to {
+    height: auto;
+    opacity: 1;
+  }
 }
 
 .pool-controls-content {
@@ -460,7 +490,7 @@
   animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.fees-msg{
+.fees-msg {
   margin: 18px 0px;
   text-align: left;
 }
@@ -486,7 +516,10 @@
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   border-radius: 4px;
+  min-width: 18px;
+  min-height: 18px;
   transition: background 0.2s;
 }
 
@@ -511,8 +544,15 @@
 }
 
 @keyframes adminFadeIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .admin-hover-label {

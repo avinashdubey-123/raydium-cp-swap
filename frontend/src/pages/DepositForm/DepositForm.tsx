@@ -353,9 +353,15 @@ export default function DepositForm() {
     return numerator.add(new BN(9999)).div(new BN(10000))
   }
 
-  const copyText = async (value?: string | null) => {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+
+  const copyText = async (value?: string | null, key = value ?? '') => {
     if (!value) return
-    try { await navigator.clipboard.writeText(value) } catch (e) { }
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(null), 1500)
+    } catch (e) { }
   }
 
   const onSubmit = (e: React.FormEvent) => {
@@ -833,20 +839,20 @@ export default function DepositForm() {
                           <div className="swap-pool-hover-card" onMouseEnter={showPoolHover} onMouseLeave={hidePoolHover}>
                             <div className="swap-hover-row">
                               <span><strong>Pool ID:</strong> {poolHoverInfo.poolId ?? 'unknown'}</span>
-                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.poolId)} title="Copy pool id" aria-label="Copy pool id">
-                                <img src={copyIcon} alt="Copy" />
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.poolId, 'pool')} title="Copy pool id" aria-label="Copy pool id">
+                                {copiedKey === 'pool' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
                               </button>
                             </div>
                             <div className="swap-hover-row">
                               <span><strong>Token0 Mint:</strong> {poolHoverInfo.token0 ?? '-'}</span>
-                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token0)} title="Copy token0" aria-label="Copy token0">
-                                <img src={copyIcon} alt="Copy" />
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token0, 'token0')} title="Copy token0" aria-label="Copy token0">
+                                {copiedKey === 'token0' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
                               </button>
                             </div>
                             <div className="swap-hover-row">
                               <span><strong>Token1 Mint:</strong> {poolHoverInfo.token1 ?? '-'}</span>
-                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token1)} title="Copy token1" aria-label="Copy token1">
-                                <img src={copyIcon} alt="Copy" />
+                              <button className="swap-copy-btn" onClick={() => copyText(poolHoverInfo.token1, 'token1')} title="Copy token1" aria-label="Copy token1">
+                                {copiedKey === 'token1' ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="Copy" />}
                               </button>
                             </div>
                           </div>

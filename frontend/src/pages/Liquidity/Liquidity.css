@@ -364,6 +364,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 28px;
+  min-height: 24px;
   transition: all 0.15s ease;
 }
 
@@ -381,6 +383,13 @@
 .lp-copy-btn:active {
   transform: scale(0.96);
   box-shadow: 0 0 0 2px rgba(57, 208, 216, 0.25);
+}
+
+.copy-status-inline {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .lp-pool-info {

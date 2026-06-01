@@ -92,6 +92,15 @@ export default function InitializeForm() {
   const [balanceA, setBalanceA] = useState<number>(0)
   const [balanceB, setBalanceB] = useState<number>(0)
   const [balanceRefetchTrigger, setBalanceRefetchTrigger] = useState<number>(0)
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null)
+
+  const copyAddress = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address)
+      setCopiedAddress(address)
+      setTimeout(() => setCopiedAddress(null), 1500)
+    } catch {}
+  }
 
   const getDatetimeLocalValue = (unixSeconds: string) => {
     const seconds = Number(unixSeconds)
@@ -733,10 +742,10 @@ export default function InitializeForm() {
                                   title="Copy address"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigator.clipboard.writeText(tokenA.mint);
+                                    void copyAddress(tokenA.mint);
                                   }}
                                 >
-                                  <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />
+                                  {copiedAddress === tokenA.mint ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />}
                                 </button>
                               </div>
                             </div>
@@ -797,10 +806,10 @@ export default function InitializeForm() {
                                   title="Copy address"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigator.clipboard.writeText(tokenB.mint);
+                                    void copyAddress(tokenB.mint);
                                   }}
                                 >
-                                  <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />
+                                  {copiedAddress === tokenB.mint ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />}
                                 </button>
                               </div>
                             </div>
@@ -1078,9 +1087,9 @@ export default function InitializeForm() {
                           type="button"
                           className="dex-action-btn"
                           title="Copy address"
-                          onClick={() => navigator.clipboard.writeText(token.mint)}
+                          onClick={() => void copyAddress(token.mint)}
                         >
-                          <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />
+                          {copiedAddress === token.mint ? <span className="copy-status-inline">Copied!</span> : <img src={copyIcon} alt="copy" className="dex-copy-icon" style={{ width: '12px', height: '12px' }} />}
                         </button>
                         {/* Link button */}
                         <a

@@ -18,6 +18,8 @@ export type PoolData = {
   vault0Balance: number | null
   vault1Balance: number | null
   lpSupply?: string
+  decimals0?: number
+  decimals1?: number
   raw: any
 }
 
@@ -73,6 +75,33 @@ function toPubString(v: any): string | null {
   } catch {
     return null
   }
+}
+
+function toSerializableValue(v: unknown): unknown {
+  if (v == null) return v
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return v
+  if (typeof v === 'bigint') return v.toString()
+  if (typeof v === 'object' && 'toBase58' in v && typeof v.toBase58 === 'function') return v.toBase58()
+  if (typeof v === 'object' && ('_isBN' in v || v.constructor?.name === 'BN') && 'toString' in v && typeof v.toString === 'function') return v.toString()
+  if (Array.isArray(v)) return v.map(toSerializableValue)
+  if (Buffer.isBuffer(v) || v instanceof Uint8Array) return Array.from(v)
+  if (typeof v === 'object') {
+    return Object.fromEntries(
+      Object.entries(v).map(([key, value]) => [key, toSerializableValue(value)]),
+    )
+  }
+  return String(v)
+}
+
+function toNumberValue(v: unknown): number | undefined {
+  if (v == null) return undefined
+  const value = Number(typeof v === 'object' && 'toString' in v && typeof v.toString === 'function' ? v.toString() : v)
+  return Number.isFinite(value) ? value : undefined
+}
+
+function toStringValue(v: unknown): string | undefined {
+  if (v == null) return undefined
+  return String(typeof v === 'object' && 'toString' in v && typeof v.toString === 'function' ? v.toString() : v)
 }
 
 function decodeAccount(coder: anchor.BorshAccountsCoder, data: Buffer | Uint8Array) {
@@ -154,7 +183,7 @@ async function fetchPoolsAndConfigs() {
       if (decoded.kind === 'pool') {
         pools.push({ pubkey: item.pubkey, account: decoded.account })
       } else {
-        ammConfigs.push({ ...decoded.account, publicKey: item.pubkey.toBase58() })
+        ammConfigs.push({ ...(toSerializableValue(decoded.account) as Record<string, unknown>), publicKey: item.pubkey.toBase58() })
       }
     } catch {
       // skip invalid account
@@ -167,11 +196,12 @@ async function fetchPoolsAndConfigs() {
     const mint0 = toPubString(account.token_0_mint ?? account.token0Mint ?? account.mint_0 ?? account.mint0 ?? account.mint_0_mint ?? account.mint_0_pubkey)
     const mint1 = toPubString(account.token_1_mint ?? account.token1Mint ?? account.mint_1 ?? account.mint1 ?? account.mint_1_mint ?? account.mint_1_pubkey)
     const ammConfig = toPubString(account.amm_config ?? account.ammConfig ?? account.amm)
+    const raw = toSerializableValue(account)
 
     return {
       poolPda: pubkey.toBase58(),
-      name: account.name ?? (mint0 ? String(mint0).slice(0, 6) : 'Pool'),
-      fee: account.fee ?? '-',
+      name: toStringValue(account.name) ?? (mint0 ? String(mint0).slice(0, 6) : 'Pool'),
+      fee: toStringValue(account.fee) ?? '-',
       ammConfig,
       token0: mint0 ?? null,
       token1: mint1 ?? null,
@@ -179,8 +209,10 @@ async function fetchPoolsAndConfigs() {
       token1Vault,
       vault0Balance: null,
       vault1Balance: null,
-      lpSupply: account.lpSupply ?? account.lp_supply ?? undefined,
-      raw: account,
+      lpSupply: toStringValue(account.lpSupply ?? account.lp_supply),
+      decimals0: toNumberValue(account.mint_0_decimals ?? account.mint0Decimals ?? account.decimals0),
+      decimals1: toNumberValue(account.mint_1_decimals ?? account.mint1Decimals ?? account.decimals1),
+      raw,
     }
   })
 
