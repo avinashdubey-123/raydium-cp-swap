@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey, SystemProgram } from '@solana/web3.js'
@@ -6,7 +6,161 @@ import * as anchor from '@coral-xyz/anchor'
 import useProgram from '../../utils/useProgram'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import { getAmmConfigAddress, getPermissionPdaAddress } from '../../utils/pda'
+import copyIcon from '../../assets/copy.svg'
 import './Admin.css'
+import '../Liquidity/Liquidity.css'
+import { getShortTokenName, getPoolDisplayName } from '../../utils/token'
+
+function getTokenColor(symbol: string): string {
+  let hash = 0
+  for (let i = 0; i < symbol.length; i++) {
+    hash = symbol.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue}, 65%, 40%)`
+}
+
+function PoolDisplay({ poolAddr, token0, token1 }: { poolAddr: string; token0?: string; token1?: string }) {
+  const [hoverInfo, setHoverInfo] = useState<{ poolId?: string | null; token0?: string | null; token1?: string | null } | null>(null)
+  const hoverTimeout = useRef<number | null>(null)
+  const clearHoverTimeout = () => {
+    if (hoverTimeout.current != null) {
+      clearTimeout(hoverTimeout.current)
+      hoverTimeout.current = null
+    }
+  }
+
+  const handleIconHover = () => {
+    clearHoverTimeout()
+    setHoverInfo({ poolId: poolAddr, token0, token1 })
+  }
+
+  const handleIconLeave = () => {
+    clearHoverTimeout()
+    hoverTimeout.current = window.setTimeout(() => setHoverInfo(null), 150)
+  }
+
+  const copyText = async (value?: string | null) => {
+    if (!value) return
+    try { await navigator.clipboard.writeText(value) } catch (e) { }
+  }
+
+  const name0 = token0 ? getShortTokenName(token0) : 'UNKN'
+  const name1 = token1 ? getShortTokenName(token1) : 'UNKN'
+  let displayName = getPoolDisplayName(token0, token1)
+  if (token0 && token1) {
+    const t0Pub = new PublicKey(token0)
+    const t1Pub = new PublicKey(token1)
+    if (Buffer.compare(t0Pub.toBuffer(), t1Pub.toBuffer()) > 0) {
+      displayName = getPoolDisplayName(token1, token0)
+    }
+  }
+
+  const getIconLabel = (symbol: string) => symbol.slice(0, 2).toUpperCase()
+
+  const color0 = getTokenColor(name0)
+  const color1 = getTokenColor(name1)
+
+  return (
+    <div className="lp-td-pool-inner" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: 0, justifyContent: 'flex-start' }}>
+      <div className="lp-hover-wrapper" onMouseEnter={handleIconHover} onMouseLeave={handleIconLeave} style={{ display: 'inline-block', position: 'relative' }}>
+        <div className="lp-pool-badges" style={{ cursor: 'pointer', display: 'flex' }} title="Hover to view pool info">
+          <div className="lp-pool-badge lp-pool-badge-a" style={{ backgroundColor: color0 }}>
+            {getIconLabel(name0)}
+          </div>
+          <div className="lp-pool-badge lp-pool-badge-b" style={{ backgroundColor: color1 }}>
+            {getIconLabel(name1)}
+          </div>
+        </div>
+        {hoverInfo && (
+          <div className="lp-hover-card">
+            <div className="lp-hover-row">
+              <span><strong>Pool id:</strong> {hoverInfo.poolId ?? 'unknown'}</span>
+              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.poolId) }} title="Copy pool id">
+                <img src={copyIcon} alt="Copy" />
+              </button>
+            </div>
+            <div className="lp-hover-row">
+              <span><strong>token0:</strong> {hoverInfo.token0 ?? '-'}</span>
+              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.token0) }} title="Copy token0">
+                <img src={copyIcon} alt="Copy" />
+              </button>
+            </div>
+            <div className="lp-hover-row">
+              <span><strong>token1:</strong> {hoverInfo.token1 ?? '-'}</span>
+              <button className="lp-copy-btn" onClick={(e) => { e.stopPropagation(); copyText(hoverInfo.token1) }} title="Copy token1">
+                <img src={copyIcon} alt="Copy" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="lp-pool-info" style={{ display: 'flex', flexDirection: 'column' }}>
+        <span className="lp-pool-name" style={{ fontWeight: 600, fontSize: '14px', color: '#fff', textAlign: 'left' }}>{displayName}</span>
+      </div>
+    </div>
+  )
+}
+
+
+/** Shortened address with copy button and hover card – same pattern as Liquidity page */
+function AdminAddress({ address, label }: { address: string; label?: string }) {
+  const [hover, setHover] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const timeout = useRef<number | null>(null)
+
+  const showHover = () => { clearHover(); setHover(true) }
+  const hideHover = () => { clearHover(); timeout.current = window.setTimeout(() => setHover(false), 150) }
+  const clearHover = () => { if (timeout.current != null) { clearTimeout(timeout.current); timeout.current = null } }
+
+  const copy = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try { await navigator.clipboard.writeText(address) } catch { }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const short = `${address.slice(0, 6)}...${address.slice(-6)}`
+
+  return (
+    <span
+      className="admin-addr-wrapper"
+      onMouseEnter={showHover}
+      onMouseLeave={hideHover}
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+    >
+      <span className="admin-addr-short" title={address}>{short}</span>
+      <button className="admin-copy-btn" onClick={copy} title="Copy address" aria-label="Copy address">
+        <img src={copyIcon} alt="Copy" style={{ width: 12, height: 12, opacity: 0.7 }} />
+      </button>
+      {hover && (
+        <span className="admin-hover-card" onMouseEnter={showHover} onMouseLeave={hideHover}>
+          {label && <div className="admin-hover-label">{label}</div>}
+          <div className="admin-hover-addr">{address}</div>
+          <div className="admin-hover-actions">
+            <button className="admin-hover-btn" onClick={copy}>
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+            <a
+              className="admin-hover-btn"
+              href={`https://explorer.solana.com/address/${address}?cluster=devnet`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Explorer
+            </a>
+          </div>
+        </span>
+      )}
+    </span>
+  )
+}
+
+let cachedConfigs: any[] | null = null;
+let cachedWhitelist: any[] | null = null;
+let cachedPools: any[] | null = null;
+let lastFetchTime = 0;
 
 const ADMIN_ID = new PublicKey('wE2EtwuovRxvXZoThsXhRTuCrFdAA1jTbLnJp9nfezL')
 
@@ -45,25 +199,41 @@ const Admin = () => {
   const [updateParams, setUpdateParams] = useState<Record<string, string>>({})
   const [updateValues, setUpdateValues] = useState<Record<string, string>>({})
 
-  const fetchData = async () => {
+  const fetchData = async (force = false) => {
     if (!program) return
+
+    if (!force && cachedConfigs && cachedWhitelist && cachedPools && Date.now() - lastFetchTime < 60000) {
+      setConfigs(cachedConfigs)
+      setWhitelist(cachedWhitelist)
+      setPools(cachedPools)
+      return
+    }
+
     setLoading(true)
     try {
       // Fetch Configs
       const configNamespace = (program.account as any).ammConfig
       const loadedConfigs = await configNamespace.all()
-      setConfigs(loadedConfigs.map((c: any) => ({ ...c.account, publicKey: c.publicKey })))
+      const newConfigs = loadedConfigs.map((c: any) => ({ ...c.account, publicKey: c.publicKey }))
 
       // Fetch Whitelist
       const permissionNamespace = (program.account as any).permission
       const loadedWhitelist = await permissionNamespace.all()
-      setWhitelist(loadedWhitelist.map((w: any) => ({ ...w.account, publicKey: w.publicKey })))
+      const newWhitelist = loadedWhitelist.map((w: any) => ({ ...w.account, publicKey: w.publicKey }))
 
       // Fetch Pools
       const poolNamespace = (program.account as any).poolState
       const loadedPools = await poolNamespace.all()
-      setPools(loadedPools.map((p: any) => ({ ...p.account, publicKey: p.publicKey })))
+      const newPools = loadedPools.map((p: any) => ({ ...p.account, publicKey: p.publicKey }))
 
+      setConfigs(newConfigs)
+      setWhitelist(newWhitelist)
+      setPools(newPools)
+
+      cachedConfigs = newConfigs
+      cachedWhitelist = newWhitelist
+      cachedPools = newPools
+      lastFetchTime = Date.now()
     } catch (err: any) {
       console.error('Fetch error:', err)
       setError(err.message || 'Failed to fetch admin data')
@@ -72,6 +242,70 @@ const Admin = () => {
     }
   }
 
+  // ------------------------------------- new changes start
+  const fetchConfigs = async () => {
+    if (!program) return
+
+    const configNamespace = (program.account as any).ammConfig
+    const loadedConfigs = await configNamespace.all()
+
+    const newConfigs = loadedConfigs.map((c: any) => ({
+      ...c.account,
+      publicKey: c.publicKey,
+    }))
+
+    setConfigs(newConfigs)
+    cachedConfigs = newConfigs
+  }
+
+  const fetchWhitelist = async () => {
+    if (!program) return
+
+    const permissionNamespace = (program.account as any).permission
+    const loadedWhitelist = await permissionNamespace.all()
+
+    const newWhitelist = loadedWhitelist.map((w: any) => ({
+      ...w.account,
+      publicKey: w.publicKey,
+    }))
+
+    setWhitelist(newWhitelist)
+    cachedWhitelist = newWhitelist
+  }
+
+  const fetchPools = async () => {
+    if (!program) return
+
+    const poolNamespace = (program.account as any).poolState
+    const loadedPools = await poolNamespace.all()
+
+    const newPools = loadedPools.map((p: any) => ({
+      ...p.account,
+      publicKey: p.publicKey,
+    }))
+
+    setPools(newPools)
+    cachedPools = newPools
+  }
+
+  const refreshActiveTab = async () => {
+    switch (activeTab) {
+      case 'configs':
+        await fetchConfigs()
+        break
+
+      case 'whitelist':
+        await fetchWhitelist()
+        break
+
+      case 'pools':
+      case 'fees':
+        await fetchPools()
+        break
+    }
+  }
+
+//----------------------------- new changes end
   useEffect(() => {
     fetchData()
   }, [program])
@@ -103,7 +337,7 @@ const Admin = () => {
 
       setTxResult({ sig, explorer: `https://explorer.solana.com/tx/${sig}?cluster=devnet` })
       setSuccess(`Config ${index} created successfully`)
-      fetchData()
+      refreshActiveTab()
     } catch (err: any) {
       setError(err.message || 'Failed to create config')
     } finally {
@@ -148,7 +382,7 @@ const Admin = () => {
       setTxResult({ sig, explorer: `https://explorer.solana.com/tx/${sig}?cluster=devnet` })
       setSuccess(`Amm Config updated successfully`)
       setUpdateValues(prev => ({ ...prev, [addrStr]: '' }))
-      fetchData()
+      await refreshActiveTab()
     } catch (err: any) {
       setError(err.message || 'Failed to update config')
     } finally {
@@ -178,7 +412,7 @@ const Admin = () => {
       setTxResult({ sig, explorer: `https://explorer.solana.com/tx/${sig}?cluster=devnet` })
       setSuccess(`User ${permissionAuthority.toBase58()} whitelisted`)
       setWhitelistOwner('')
-      fetchData()
+      await refreshActiveTab()
     } catch (err: any) {
       setError(err.message || 'Failed to whitelist user')
     } finally {
@@ -206,7 +440,7 @@ const Admin = () => {
 
       setTxResult({ sig, explorer: `https://explorer.solana.com/tx/${sig}?cluster=devnet` })
       setSuccess(`User ${user.toBase58()} removed from whitelist`)
-      fetchData()
+      await refreshActiveTab()
     } catch (err: any) {
       setError(err.message || 'Failed to remove user')
     } finally {
@@ -251,7 +485,18 @@ const Admin = () => {
 
       setTxResult({ sig, explorer: `https://explorer.solana.com/tx/${sig}?cluster=devnet` })
       setSuccess(`Pool ${pool.publicKey.toBase58()} status updated to ${status}`)
-      fetchData()
+      await refreshActiveTab()
+
+      setPoolStatusChanges(prev => {
+        const next = { ...prev };
+        delete next[pool.publicKey.toBase58()];
+        return next;
+      });
+      setExpandedPools(prev => {
+        const next = new Set(prev);
+        next.delete(pool.publicKey.toBase58());
+        return next;
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to update status')
     } finally {
@@ -268,6 +513,10 @@ const Admin = () => {
   if (!isAdmin && wallet.publicKey) {
     return <div className="admin-page">Access Denied. You are not the admin.</div>
   }
+
+  useEffect(() => {
+  refreshActiveTab()
+}, [location.key])
 
   return (
     <div className="admin-page">
@@ -344,94 +593,94 @@ const Admin = () => {
 
           <h2>Existing Configs</h2>
           <div className="admin-table-container">
-          <div className="admin-grid-table">
-            <div className="admin-grid-header configs-grid">
-              <span className="center">Index</span>
-              <span className="center">Trade Fee</span>
-              <span className="center">Protocol Fee</span>
-              <span className="center">Fund Fee</span>
-              <span className="center">Creator Fee</span>
-              <span className="center">Protocol Owner</span>
-              <span className="center">Fund Owner</span>
-              <span className="center">Address</span>
-              <span className="center"></span>
-            </div>
-            {configs.map((c) => {
-              const configAddr = c.publicKey.toBase58()
-              const isExpanded = expandedConfigs.has(configAddr)
+            <div className="admin-grid-table">
+              <div className="admin-grid-header configs-grid">
+                <span className="center">Index</span>
+                <span className="center">Trade Fee</span>
+                <span className="center">Protocol Fee</span>
+                <span className="center">Fund Fee</span>
+                <span className="center">Creator Fee</span>
+                <span className="center">Protocol Owner</span>
+                <span className="center">Fund Owner</span>
+                <span className="center">Address</span>
+                <span className="center"></span>
+              </div>
+              {configs.map((c) => {
+                const configAddr = c.publicKey.toBase58()
+                const isExpanded = expandedConfigs.has(configAddr)
 
-              return (
-                <React.Fragment key={configAddr}>
-                  <div 
-                    className={`admin-grid-row configs-grid ${isExpanded ? 'expanded' : ''}`}
-                    onClick={() => {
-                      const newExpanded = new Set(expandedConfigs)
-                      if (newExpanded.has(configAddr)) newExpanded.delete(configAddr)
-                      else newExpanded.add(configAddr)
-                      setExpandedConfigs(newExpanded)
-                    }}
-                  >
-                    <div className="admin-grid-cell center">{c.index}</div>
-                    <div className="admin-grid-cell center">{c.tradeFeeRate.toString()}</div>
-                    <div className="admin-grid-cell center">{c.protocolFeeRate.toString()}</div>
-                    <div className="admin-grid-cell center">{c.fundFeeRate.toString()}</div>
-                    <div className="admin-grid-cell center">{c.creatorFeeRate?.toString() || '0'}</div>
-                    <div className="admin-grid-cell center" title={c.protocolOwner.toBase58()}>{c.protocolOwner.toBase58().slice(0, 8)}...</div>
-                    <div className="admin-grid-cell center" title={c.fundOwner.toBase58()}>{c.fundOwner.toBase58().slice(0, 8)}...</div>
-                    <div className="admin-grid-cell center" title={configAddr}>{configAddr.slice(0, 8)}...</div>
-                    <div className="admin-grid-cell center">
-                      <button className="position-expand" type="button">
-                        <span className={`position-expand-icon ${isExpanded ? 'open' : ''}`} />
-                      </button>
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className="admin-expanded-content">
-                      <div className="pool-controls-content">
-                        <p className="pool-controls-title">Update Configuration</p>
-                        <div className="admin-form" style={{ marginBottom: 0 }}>
-                          <div className="admin-field">
-                            <label>Parameter</label>
-                            <select
-                              value={updateParams[configAddr] ?? '0'}
-                              onChange={(e) => setUpdateParams(prev => ({ ...prev, [configAddr]: e.target.value }))}
-                            >
-                              <option value="0">Trade Fee Rate</option>
-                              <option value="1">Protocol Fee Rate</option>
-                              <option value="2">Fund Fee Rate</option>
-                              <option value="3">New Protocol Owner (Address)</option>
-                              <option value="4">New Fund Owner (Address)</option>
-                            </select>
-                          </div>
-                          <div className="admin-field">
-                            <label>New Value</label>
-                            <input
-                              type="text"
-                              value={updateValues[configAddr] ?? ''}
-                              onChange={(e) => setUpdateValues(prev => ({ ...prev, [configAddr]: e.target.value }))}
-                              placeholder={(updateParams[configAddr] ?? '0') === '3' || (updateParams[configAddr] ?? '0') === '4' ? 'PublicKey' : 'Value'}
-                            />
-                          </div>
-                        </div>
-                        <div className="pool-controls-actions">
-                          <button
-                            className="admin-btn admin-btn-primary"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleUpdateAmmConfig(c.publicKey)
-                            }}
-                            disabled={loading || !(updateValues[configAddr])}
-                          >
-                            Update Field
-                          </button>
-                        </div>
+                return (
+                  <React.Fragment key={configAddr}>
+                    <div
+                      className={`admin-grid-row configs-grid ${isExpanded ? 'expanded' : ''}`}
+                      onClick={() => {
+                        const newExpanded = new Set(expandedConfigs)
+                        if (newExpanded.has(configAddr)) newExpanded.delete(configAddr)
+                        else newExpanded.add(configAddr)
+                        setExpandedConfigs(newExpanded)
+                      }}
+                    >
+                      <div className="admin-grid-cell center">{c.index}</div>
+                      <div className="admin-grid-cell center">{c.tradeFeeRate.toString()}</div>
+                      <div className="admin-grid-cell center">{c.protocolFeeRate.toString()}</div>
+                      <div className="admin-grid-cell center">{c.fundFeeRate.toString()}</div>
+                      <div className="admin-grid-cell center">{c.creatorFeeRate?.toString() || '0'}</div>
+                      <div className="admin-grid-cell center"><AdminAddress address={c.protocolOwner.toBase58()} label="Protocol Owner" /></div>
+                      <div className="admin-grid-cell center"><AdminAddress address={c.fundOwner.toBase58()} label="Fund Owner" /></div>
+                      <div className="admin-grid-cell center"><AdminAddress address={configAddr} label="Config" /></div>
+                      <div className="admin-grid-cell center">
+                        <button className="position-expand" type="button">
+                          <span className={`position-expand-icon ${isExpanded ? 'open' : ''}`} />
+                        </button>
                       </div>
                     </div>
-                  )}
-                </React.Fragment>
-              )
-            })}
-          </div>
+                    {isExpanded && (
+                      <div className="admin-expanded-content">
+                        <div className="pool-controls-content">
+                          <p className="pool-controls-title">Update Configuration</p>
+                          <div className="admin-form" style={{ marginBottom: 0 }}>
+                            <div className="admin-field">
+                              <label>Parameter</label>
+                              <select
+                                value={updateParams[configAddr] ?? '0'}
+                                onChange={(e) => setUpdateParams(prev => ({ ...prev, [configAddr]: e.target.value }))}
+                              >
+                                <option value="0">Trade Fee Rate</option>
+                                <option value="1">Protocol Fee Rate</option>
+                                <option value="2">Fund Fee Rate</option>
+                                <option value="3">New Protocol Owner (Address)</option>
+                                <option value="4">New Fund Owner (Address)</option>
+                              </select>
+                            </div>
+                            <div className="admin-field">
+                              <label>New Value</label>
+                              <input
+                                type="text"
+                                value={updateValues[configAddr] ?? ''}
+                                onChange={(e) => setUpdateValues(prev => ({ ...prev, [configAddr]: e.target.value }))}
+                                placeholder={(updateParams[configAddr] ?? '0') === '3' || (updateParams[configAddr] ?? '0') === '4' ? 'PublicKey' : 'Value'}
+                              />
+                            </div>
+                          </div>
+                          <div className="pool-controls-actions">
+                            <button
+                              className="admin-btn admin-btn-primary"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleUpdateAmmConfig(c.publicKey)
+                              }}
+                              disabled={loading || !(updateValues[configAddr])}
+                            >
+                              Update Field
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -458,8 +707,8 @@ const Admin = () => {
             </div>
             {whitelist.map((w) => (
               <div className="admin-grid-row whitelist-grid" key={w.publicKey.toBase58()}>
-                <div className="admin-grid-cell" title={w.authority.toBase58()}>{w.authority.toBase58().slice(0, 16)}...</div>
-                <div className="admin-grid-cell" title={w.publicKey.toBase58()}>{w.publicKey.toBase58().slice(0, 12)}...</div>
+                <div className="admin-grid-cell"><AdminAddress address={w.authority.toBase58()} label="User Address" /></div>
+                <div className="admin-grid-cell"><AdminAddress address={w.publicKey.toBase58()} label="Permission PDA" /></div>
                 <div className="admin-grid-cell center">
                   <button className="admin-btn admin-btn-secondary" style={{ padding: '6px 16px', fontSize: '11px' }} onClick={() => handleRemoveFromWhitelist(w.authority)} disabled={loading}>Remove</button>
                 </div>
@@ -487,7 +736,7 @@ const Admin = () => {
               return (
                 <React.Fragment key={poolAddr}>
                   <div className={`admin-grid-row pools-grid ${isExpanded ? 'expanded' : ''}`} onClick={() => togglePoolExpansion(poolAddr, p.status)}>
-                    <div className="admin-grid-cell" title={poolAddr}>{poolAddr.slice(0, 16)}...</div>
+                    <div className="admin-grid-cell pool-cell"><PoolDisplay poolAddr={poolAddr} token0={p.token0Mint?.toBase58()} token1={p.token1Mint?.toBase58()} /></div>
                     <div className="admin-grid-cell center">
                       <div className="admin-pool-status-group">
                         <span className={`status-indicator ${(p.status & 1) === 0 ? 'enabled' : 'disabled'}`}>
@@ -501,7 +750,7 @@ const Admin = () => {
                         </span>
                       </div>
                     </div>
-                    <div className="admin-grid-cell center" title={p.ammConfig.toBase58()}>{p.ammConfig.toBase58().slice(0, 8)}...</div>
+                    <div className="admin-grid-cell center"><AdminAddress address={p.ammConfig.toBase58()} label="Config" /></div>
                     <div className="admin-grid-cell center">
                       <button
                         className="position-expand"
@@ -598,7 +847,7 @@ const Admin = () => {
             </div>
             {pools.map((p) => (
               <div className="admin-grid-row fees-grid" key={p.publicKey.toBase58()}>
-                <div className="admin-grid-cell" title={p.publicKey.toBase58()}>{p.publicKey.toBase58().slice(0, 16)}...</div>
+                <div className="admin-grid-cell pool-cell"><PoolDisplay poolAddr={p.publicKey.toBase58()} token0={p.token0Mint?.toBase58()} token1={p.token1Mint?.toBase58()} /></div>
                 <div className="admin-grid-cell center">
                   {((Number(p.protocolFeesToken0 || p.protocolFees0 || 0)) / Math.pow(10, p.mint0Decimals || 6)).toFixed(4)} / {((Number(p.protocolFeesToken1 || p.protocolFees1 || 0)) / Math.pow(10, p.mint1Decimals || 6)).toFixed(4)}
                 </div>

@@ -29,6 +29,8 @@ import {
   type TokenRegistryEntry,
 } from '../../utils/tokenRegistry'
 import useTokenProgramAta from '../../hooks/useTokenProgramAta'
+import { useDispatch } from 'react-redux'
+import { invalidatePoolsList } from '../../store/solanaApi'
 
 const CREATE_POOL_FEE_RECEIVER = new PublicKey('63EqUEuqiLw9ZvJJsFECg5fN7bM9hBifUEYJFGhJtuCa')
 
@@ -61,6 +63,7 @@ export default function InitializeForm() {
   const { connection } = useConnection()
   const wallet = useWallet()
   const { detectTokenProgram, buildEnsureAtaInstruction } = useTokenProgramAta()
+  const dispatch = useDispatch()
 
   const state = (location.state as { mode?: 'permissioned' | 'standard' }) || {}
   const isPermissionedMode = state.mode === 'permissioned'
@@ -551,6 +554,8 @@ export default function InitializeForm() {
           signature: sentSig,
           status: 'success',
         })
+        // Invalidate the full pools list since a new pool was created
+        invalidatePoolsList(dispatch)
         setBalanceRefetchTrigger(t => t + 1)
         setStatus(null)
         setBusy(false)
@@ -576,6 +581,8 @@ export default function InitializeForm() {
           signature: sig,
           status: 'success',
         })
+        // Invalidate the full pools list since a new pool was created
+        invalidatePoolsList(dispatch)
         setBalanceRefetchTrigger(t => t + 1)
         setStatus(null)
         setBusy(false)

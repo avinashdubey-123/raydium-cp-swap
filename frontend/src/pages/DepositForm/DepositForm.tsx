@@ -22,7 +22,8 @@ import { formatAmount } from '../../utils/format'
 import idlJson from '../../../idl/raydium_cp_swap.json'
 import { logActivity } from '../../utils/activity'
 import { useDispatch } from 'react-redux'
-import { solanaApi } from '../../store/solanaApi'
+import { refreshAfterPoolTx } from '../../store/solanaApi'
+import { invalidatePortfolioCache } from '../Portfolio/Portfolio'
 
 type Pool = {
   name?: string
@@ -312,10 +313,8 @@ export default function DepositForm() {
     }
 
     fetchUserBalances()
-    const interval = setInterval(fetchUserBalances, 10000)
     return () => {
       mounted = false
-      clearInterval(interval)
     }
   }, [wallet.publicKey, token0MintParam, token1MintParam, connection, decimals0, decimals1])
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
@@ -692,7 +691,10 @@ export default function DepositForm() {
           signature: tx,
           status: 'success',
         })
-        dispatch(solanaApi.util.invalidateTags([{ type: 'Pools', id: 'LIST' }, { type: 'Portfolio', id: 'LIST' }]))
+        // Surgically refresh only this pool's vault balances + portfolio cache
+        await refreshAfterPoolTx(dispatch, poolAddr.toBase58())
+        // Also invalidate the module-level portfolio cache
+        invalidatePortfolioCache(wallet.publicKey?.toBase58())
         await refetchPoolStateAfterTx(tx)
         setStatus(null)
         setBusy(false)

@@ -24,8 +24,9 @@ import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import idlJson from '../../../idl/raydium_cp_swap.json'
 import { logActivity } from '../../utils/activity'
-import { useGetPoolsQuery } from '../../store/solanaApi'
+import { useGetPoolsQuery, refreshPoolCache } from '../../store/solanaApi'
 import useTokenProgramAta from '../../hooks/useTokenProgramAta'
+import { useDispatch } from 'react-redux'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
 
@@ -76,6 +77,7 @@ export default function Swap() {
   const { connection } = useConnection()
   const { detectTokenProgram, deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
   const { data: poolsData, isLoading: loadingPools, error: poolsQueryError, refetch: refetchPools } = useGetPoolsQuery()
+  const dispatch = useDispatch()
 
   const allPools = useMemo<PoolData[]>(() => (poolsData?.pools as PoolData[] | undefined) ?? [], [poolsData])
   const ammConfigs = useMemo<any[]>(() => poolsData?.ammConfigs ?? [], [poolsData])
@@ -98,7 +100,12 @@ export default function Swap() {
   }, [allPools, routePoolPda])
 
   useEffect(() => {
+    if (poolFromRoute) {
+      setSelectedPool(poolFromRoute as PoolData)
+      return
+    }
     if (selectedPool || allPools.length === 0) return
+    
     if (routeMatchedPool) {
       setSelectedPool(routeMatchedPool)
       return
@@ -561,10 +568,8 @@ export default function Swap() {
     }
 
     fetchUserBalances()
-    const interval = setInterval(fetchUserBalances, 10000)
     return () => {
       mounted = false
-      clearInterval(interval)
     }
   }, [wallet.publicKey, activePool, connection])
 
@@ -1013,6 +1018,8 @@ export default function Swap() {
           })
 
           await connection.confirmTransaction(tx, 'confirmed').catch(() => null)
+          // Surgically refresh only this pool's vault balances in the cache
+          void refreshPoolCache(dispatch, ctx.poolAddr.toBase58())
           await loadPrices()
           setStatus(null)
           setBusy(false)
@@ -1071,6 +1078,8 @@ export default function Swap() {
           })
 
           await connection.confirmTransaction(tx, 'confirmed').catch(() => null)
+          // Surgically refresh only this pool's vault balances in the cache
+          void refreshPoolCache(dispatch, ctx.poolAddr.toBase58())
           await loadPrices()
           setStatus(null)
           setBusy(false)

@@ -18,6 +18,9 @@ import { RoundDirection } from '../../utils/curve/calculator'
 import { computeTransferFeeForPre } from '../../utils/curve/fee'
 import { logActivity } from '../../utils/activity'
 import useTokenProgramAta from '../../hooks/useTokenProgramAta'
+import { useDispatch } from 'react-redux'
+import { refreshAfterPoolTx } from '../../store/solanaApi'
+import { invalidatePortfolioCache } from '../Portfolio/Portfolio'
 import './WithdrawForm.css'
 
 export type WithdrawState = {
@@ -93,6 +96,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
     const { connection } = useConnection()
     const wallet = useWallet()
     const { detectTokenProgram, deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
+    const dispatch = useDispatch()
 
     const poolName = state.name || `${state.token0Symbol || 'TOKEN0'}/${state.token1Symbol || 'TOKEN1'}`
     const token0Symbol = state.token0Symbol || 'TOKEN0'
@@ -206,6 +210,10 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 signature: tx,
                 status: 'success',
             })
+            // Surgically refresh only this pool's vault balances + portfolio cache
+            void refreshAfterPoolTx(dispatch, state.poolPda || '')
+            // Also invalidate the module-level portfolio cache
+            invalidatePortfolioCache(wallet.publicKey?.toBase58())
         } catch (err: any) {
             const message = err?.message || String(err)
             setTxState({
@@ -397,14 +405,6 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                         <button type="button" onClick={() => onQuickPercent(100)}>100%</button>
                     </div>
 
-                    <label className="withdraw-keep-open">
-                        <input
-                            type="checkbox"
-                            checked={keepPositionOpen}
-                            onChange={(e) => setKeepPositionOpen(e.target.checked)}
-                        />
-                        <span>Keep my position open</span>
-                    </label>
                 </div>
 
                 <div className="withdraw-summary">

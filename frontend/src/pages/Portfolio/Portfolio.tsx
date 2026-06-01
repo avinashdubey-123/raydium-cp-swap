@@ -75,6 +75,28 @@ function getTokenColor(symbol: string): string {
   return `hsl(${hue}, 65%, 40%)`
 }
 
+// ── Persistent portfolio cache (module-level, survives component unmount) ──
+type PortfolioCacheEntry = {
+  ts: number
+  positions: ComputedPosition[]
+}
+const PORTFOLIO_CACHE_TTL = 300_000 // 5 minutes
+const __portfolioCache: Map<string, PortfolioCacheEntry> =
+  (globalThis as any).__portfolioCache ||
+  ((globalThis as any).__portfolioCache = new Map<string, PortfolioCacheEntry>())
+
+/**
+ * Invalidate the portfolio cache for a specific wallet (or all wallets).
+ * Call this after any state-changing transaction (deposit, withdraw, fee collect).
+ */
+export function invalidatePortfolioCache(walletAddress?: string) {
+  if (walletAddress) {
+    __portfolioCache.delete(walletAddress)
+  } else {
+    __portfolioCache.clear()
+  }
+}
+
 const Portfolio = () => {
   const program = useProgram()
   const navigate = useNavigate()
@@ -83,15 +105,37 @@ const Portfolio = () => {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [positions, setPositions] = useState<ComputedPosition[]>([])
+  const [positions, setPositions] = useState<ComputedPosition[]>(() => {
+    // Initialise from cache so the UI renders instantly
+    if (wallet.publicKey) {
+      const key = wallet.publicKey.toBase58()
+      const cached = __portfolioCache.get(key)
+      if (cached && Date.now() - cached.ts < PORTFOLIO_CACHE_TTL) {
+        return cached.positions
+      }
+    }
+    return []
+  })
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   
-  const [activeTab, setActiveTab] = useState<'assets' | 'liquidity' | 'activity'>('assets')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [activeTab, setActiveTab] = useState<'assets' | 'liquidity' | 'activity'>(() => {
+    // Restore from sessionStorage so the tab persists across SPA navigation
+    try {
+      const saved = sessionStorage.getItem('portfolio_activeTab')
+      if (saved === 'assets' || saved === 'liquidity' || saved === 'activity') return saved
+    } catch {}
+    return 'assets'
+  })
+  const [searchQuery, setSearchQuery] = useState(() => {
+    try { return sessionStorage.getItem('portfolio_searchQuery') || '' } catch { return '' }
+  })
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [copiedPoolPda, setCopiedPoolPda] = useState<string | null>(null)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // Track the wallet address we last loaded for so we don't re-fetch on
+  // dependency changes that don't actually change the wallet.
+  const lastLoadedWalletRef = useRef<string | null>(null)
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -289,6 +333,23 @@ const Portfolio = () => {
   useEffect(() => {
     if (!program || !wallet.publicKey || !connection) return
 
+    const walletKey = wallet.publicKey.toBase58()
+
+    // ── Check persistent cache first ──
+    const cached = __portfolioCache.get(walletKey)
+    if (cached && Date.now() - cached.ts < PORTFOLIO_CACHE_TTL) {
+      // Data is still fresh – render immediately, skip network calls
+      setPositions(cached.positions)
+      lastLoadedWalletRef.current = walletKey
+      return // do NOT enter loading state
+    }
+
+    // ── Avoid redundant fetches if we already loaded for this wallet ──
+    // (e.g. program reference changed but wallet didn't)
+    if (lastLoadedWalletRef.current === walletKey && positions.length > 0) {
+      return
+    }
+
     const loadPortfolio = async () => {
       try {
         setLoading(true)
@@ -299,11 +360,15 @@ const Portfolio = () => {
         const lpPositions = filterLPs(tokenAccounts, loadedPools)
         const computedPositions = await computePositions(lpPositions, loadedPools)
 
+        // Store in persistent cache
+        __portfolioCache.set(walletKey, { ts: Date.now(), positions: computedPositions })
+        lastLoadedWalletRef.current = walletKey
         setPositions(computedPositions)
       } catch (err: any) {
         console.error('Portfolio load error:', err)
         setError('Failed to load portfolio data')
-        setPositions([])
+        // Don't clear positions if we had cached data – keep showing stale data
+        // rather than flashing an empty state
       } finally {
         setLoading(false)
       }
@@ -313,6 +378,10 @@ const Portfolio = () => {
   }, [program, wallet.publicKey, connection])
 
   useEffect(() => {
+    // Persist the active tab to sessionStorage
+    try { sessionStorage.setItem('portfolio_activeTab', activeTab) } catch {}
+    // Persist search query for liquidity tab
+    try { sessionStorage.setItem('portfolio_searchQuery', searchQuery) } catch {}
     if (activeTab === 'activity') {
       setActivities(getActivities())
     }

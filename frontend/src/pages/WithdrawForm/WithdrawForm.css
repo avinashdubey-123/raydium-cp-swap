@@ -208,15 +208,6 @@
   border-color: var(--btn-outline-active-border);
 }
 
-.withdraw-keep-open {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #8ea5c7;
-  font-size: 12px;
-  margin-top: 6px;
-}
-
 .withdraw-summary {
   margin-top: 14px;
   border-radius: 12px;

@@ -2,6 +2,7 @@ import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react'
 import { clusterApiUrl, Connection, PublicKey } from '@solana/web3.js'
 import * as anchor from '@coral-xyz/anchor'
 import idlJson from '../../idl/raydium_cp_swap.json'
+import type { AppDispatch } from './index'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
 
@@ -23,6 +24,24 @@ export type PoolData = {
 export type AmmConfigData = {
   publicKey: string
   [key: string]: any
+}
+
+export type PortfolioPosition = {
+  poolPda: string
+  token0Mint: string
+  token1Mint: string
+  lpMint: string
+  lpTokenAccount: string
+  lpTokenAmount: number
+  lpTokenDecimals: number
+  token0Symbol?: string
+  token1Symbol?: string
+  ammConfig?: string
+  lpSupplyRaw?: string
+  decimals0?: number
+  decimals1?: number
+  token0Amount: number
+  token1Amount: number
 }
 
 let cachedConnection: Connection | null = null
@@ -179,6 +198,77 @@ async function fetchPoolsAndConfigs() {
   return { pools: mapped, ammConfigs }
 }
 
+/**
+ * Fetch fresh vault balances for a single pool and surgically update the
+ * getPools cache. This avoids refetching ALL pools when only one changed.
+ */
+export async function refreshPoolCache(dispatch: AppDispatch, poolPda: string) {
+  try {
+    const connection = getConnection()
+
+    // Step 1: Read vault addresses from the cached pool entry.
+    // updateQueryData is synchronous, so we capture values via closure.
+    let vault0Addr: string | null = null
+    let vault1Addr: string | null = null
+
+    dispatch(
+      solanaApi.util.updateQueryData('getPools', undefined, (draft: any) => {
+        if (!draft?.pools) return
+        const pool = draft.pools.find((p: PoolData) => p.poolPda === poolPda)
+        if (pool) {
+          vault0Addr = pool.token0Vault
+          vault1Addr = pool.token1Vault
+        }
+      })
+    )
+
+    if (!vault0Addr || !vault1Addr) return
+
+    // Step 2: Fetch only this pool's vault balances (2 RPC calls total)
+    const [newVault0, newVault1] = await Promise.all([
+      getTokenBalance(connection, vault0Addr),
+      getTokenBalance(connection, vault1Addr),
+    ])
+
+    // Step 3: Surgically update only this pool's balances in the cache
+    dispatch(
+      solanaApi.util.updateQueryData('getPools', undefined, (draft: any) => {
+        if (!draft?.pools) return
+        const pool = draft.pools.find((p: PoolData) => p.poolPda === poolPda)
+        if (pool) {
+          pool.vault0Balance = newVault0
+          pool.vault1Balance = newVault1
+        }
+      })
+    )
+  } catch (err) {
+    console.error('[refreshPoolCache] Error refreshing pool:', poolPda, err)
+  }
+}
+
+/**
+ * Invalidate the full pools list (e.g. after creating a new pool).
+ */
+export function invalidatePoolsList(dispatch: AppDispatch) {
+  dispatch(solanaApi.util.invalidateTags([{ type: 'Pools', id: 'LIST' }]))
+}
+
+/**
+ * Invalidate portfolio data (e.g. after deposit/withdraw that changes LP positions).
+ */
+export function invalidatePortfolio(dispatch: AppDispatch) {
+  dispatch(solanaApi.util.invalidateTags([{ type: 'Portfolio', id: 'LIST' }]))
+}
+
+/**
+ * Combined refresh for pool + portfolio after a transaction that affects
+ * both pool reserves and user LP positions (deposit / withdraw).
+ */
+export async function refreshAfterPoolTx(dispatch: AppDispatch, poolPda: string) {
+  await refreshPoolCache(dispatch, poolPda)
+  invalidatePortfolio(dispatch)
+}
+
 export const solanaApi = createApi({
   reducerPath: 'solanaApi',
   baseQuery: fakeBaseQuery(),
@@ -199,30 +289,11 @@ export const solanaApi = createApi({
         }
       },
       providesTags: [{ type: 'Pools', id: 'LIST' }],
-      keepUnusedDataFor: 60 * 10,
-      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch }) {
-        await cacheDataLoaded
-        const connection = getConnection()
-        let listenerId: number | null = null
-
-        try {
-          listenerId = connection.onProgramAccountChange(PROGRAM_ID, () => {
-            dispatch(solanaApi.util.invalidateTags([{ type: 'Pools', id: 'LIST' }, { type: 'Portfolio', id: 'LIST' }]))
-          })
-        } catch {
-          // websocket subscription is best-effort
-        }
-
-        await cacheEntryRemoved
-
-        if (listenerId != null) {
-          try {
-            await connection.removeProgramAccountChangeListener(listenerId)
-          } catch {
-            // no-op
-          }
-        }
-      },
+      // Keep cached for 30 minutes – no more websocket-triggered refetches.
+      // Data is only invalidated explicitly after transactions.
+      keepUnusedDataFor: 60 * 30,
+      // NO onCacheEntryAdded websocket listener – refetches are now
+      // driven exclusively by transactions via the helper functions above.
     }),
   }),
 })

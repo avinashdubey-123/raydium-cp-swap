@@ -12,6 +12,7 @@ import { getAuthAddress } from '../../utils/pda'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 import '../WithdrawForm/WithdrawForm.css'
+import { getPoolDisplayName } from '../../utils/token'
 
 const toPublicKey = (value?: string | any | null) => {
     if (!value) return null
@@ -133,10 +134,10 @@ export default function CollectFees() {
         setTxState({ status: 'info', title: 'Preparing', message: 'Building transaction...' })
 
         try {
-            const token0Mint = new PublicKey(pool.token0Mint.toString())
-            const token1Mint = new PublicKey(pool.token1Mint.toString())
-            const token0Program = new PublicKey(pool.token0Program.toString())
-            const token1Program = new PublicKey(pool.token1Program.toString())
+            const token0Mint = toPublicKey(pool.token0Mint)!
+            const token1Mint = toPublicKey(pool.token1Mint)!
+            const token0Program = toPublicKey(pool.token0Program)!
+            const token1Program = toPublicKey(pool.token1Program)!
             
             const recipient0 = deriveAta(wallet.publicKey, token0Mint, token0Program)
             const recipient1 = deriveAta(wallet.publicKey, token1Mint, token1Program)
@@ -167,9 +168,9 @@ export default function CollectFees() {
                     owner: wallet.publicKey,
                     authority,
                     poolState: poolPda,
-                    ammConfig: new PublicKey(pool.ammConfig.toString()),
-                    token0Vault: new PublicKey(pool.token0Vault.toString()),
-                    token1Vault: new PublicKey(pool.token1Vault.toString()),
+                    ammConfig: toPublicKey(pool.ammConfig)!,
+                    token0Vault: toPublicKey(pool.token0Vault)!,
+                    token1Vault: toPublicKey(pool.token1Vault)!,
                     vault0Mint: token0Mint,
                     vault1Mint: token1Mint,
                     recipientToken0Account: recipient0,
@@ -216,7 +217,7 @@ export default function CollectFees() {
                 <div className="withdraw-header">
                     <button className="withdraw-close" onClick={() => navigate('/admin', { state: { activeTab: state?.fromTab } })}>x</button>
                     <h2>Collect {type === 'protocol' ? 'Protocol' : 'Fund'} Fees</h2>
-                    <p>Pool: {poolPda.toBase58().slice(0, 12)}...</p>
+                    <p style={{ margin: '8px 0', fontSize: '14px', color: '#fff', fontWeight: 600 }}>Pool: {getPoolDisplayName(toPublicKey(pool.token0Mint)?.toBase58(), toPublicKey(pool.token1Mint)?.toBase58())}</p>
                 </div>
 
                 <div className="withdraw-token-box">

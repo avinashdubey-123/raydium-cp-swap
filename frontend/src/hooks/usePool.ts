@@ -47,7 +47,7 @@ export default function usePool(params: UsePoolParams) {
 
       const key = poolAddress.toBase58()
 
-      const TTL = 10_000
+      const TTL = 300_000 // 5 minutes – pool state rarely changes without user transactions
       type CacheEntry = { ts: number; state: any; v0: number | null; v1: number | null; dec0: number; dec1: number }
       ;(globalThis as any).__usePool_cache = (globalThis as any).__usePool_cache || new Map<string, CacheEntry>()
       ;(globalThis as any).__usePool_inflight = (globalThis as any).__usePool_inflight || new Map<string, Promise<CacheEntry | null>>()
