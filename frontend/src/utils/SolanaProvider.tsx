@@ -23,7 +23,9 @@ export const SolanaProvider: FC<SolanaProviderProps> = ({ children }) => {
     return [new PhantomWalletAdapter()]
   }, [])
 
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  const endpoint = useMemo(() => {
+    return import.meta.env.VITE_SOLANA_RPC_URL || clusterApiUrl(network);
+  }, [network]);
 
   useEffect(() => {
     try {

@@ -4,15 +4,13 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
 import * as anchor from '@coral-xyz/anchor'
 import { 
-    getAssociatedTokenAddressSync, 
     TOKEN_PROGRAM_ID, 
-    TOKEN_2022_PROGRAM_ID, 
-    createAssociatedTokenAccountIdempotentInstruction,
-    ASSOCIATED_TOKEN_PROGRAM_ID 
+    TOKEN_2022_PROGRAM_ID
 } from '@solana/spl-token'
 import useProgram from '../../utils/useProgram'
 import { getAuthAddress } from '../../utils/pda'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
+import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 import '../WithdrawForm/WithdrawForm.css'
 
 const toPublicKey = (value?: string | any | null) => {
@@ -53,6 +51,7 @@ export default function CollectFees() {
     const wallet = useWallet()
     const { connection } = useConnection()
     const program = useProgram()
+    const { deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
     
     const state = location.state as { pool: any; type: 'protocol' | 'fund'; fromTab?: string }
     const [percent, setPercent] = useState(100)
@@ -116,8 +115,8 @@ export default function CollectFees() {
         ? getBNValue(pool.protocolFeesToken1 || pool.protocolFees1) 
         : getBNValue(pool.fundFeesToken1 || pool.fundFees1)
 
-    const dec0 = pool.mint0Decimals || 6
-    const dec1 = pool.mint1Decimals || 6
+    const dec0 = pool.mint0Decimals ?? pool.mint_0_decimals ?? pool.mintDecimals0 ?? pool.decimals0 ?? 6
+    const dec1 = pool.mint1Decimals ?? pool.mint_1_decimals ?? pool.mintDecimals1 ?? pool.decimals1 ?? 6
 
     const onConfirmCollection = async () => {
         if (!program || !wallet.publicKey || !pool) return
@@ -139,31 +138,29 @@ export default function CollectFees() {
             const token0Program = new PublicKey(pool.token0Program.toString())
             const token1Program = new PublicKey(pool.token1Program.toString())
             
-            const recipient0 = getAssociatedTokenAddressSync(token0Mint, wallet.publicKey, false, token0Program)
-            const recipient1 = getAssociatedTokenAddressSync(token1Mint, wallet.publicKey, false, token1Program)
+            const recipient0 = deriveAta(wallet.publicKey, token0Mint, token0Program)
+            const recipient1 = deriveAta(wallet.publicKey, token1Mint, token1Program)
 
             const [authority] = await getAuthAddress(program.programId)
             const method = type === 'protocol' ? (program.methods as any).collectProtocolFee : (program.methods as any).collectFundFee
             
             const tx = new anchor.web3.Transaction()
-            
-            tx.add(createAssociatedTokenAccountIdempotentInstruction(
-                wallet.publicKey,
-                recipient0,
-                wallet.publicKey,
-                token0Mint,
-                token0Program,
-                ASSOCIATED_TOKEN_PROGRAM_ID
-            ))
-            
-            tx.add(createAssociatedTokenAccountIdempotentInstruction(
-                wallet.publicKey,
-                recipient1,
-                wallet.publicKey,
-                token1Mint,
-                token1Program,
-                ASSOCIATED_TOKEN_PROGRAM_ID
-            ))
+
+            const recipient0AtaCtx = await buildEnsureAtaInstruction({
+                payer: wallet.publicKey,
+                owner: wallet.publicKey,
+                mint: token0Mint,
+                tokenProgram: token0Program,
+            })
+            const recipient1AtaCtx = await buildEnsureAtaInstruction({
+                payer: wallet.publicKey,
+                owner: wallet.publicKey,
+                mint: token1Mint,
+                tokenProgram: token1Program,
+            })
+
+            if (recipient0AtaCtx.instruction) tx.add(recipient0AtaCtx.instruction)
+            if (recipient1AtaCtx.instruction) tx.add(recipient1AtaCtx.instruction)
 
             const ix = await method(amount0, amount1)
                 .accounts({

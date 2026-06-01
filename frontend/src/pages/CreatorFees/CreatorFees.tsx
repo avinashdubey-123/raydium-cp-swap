@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useConnection, useWallet } from '@solana/wallet-adapter-react'
-import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token'
+import { ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { PublicKey, SendTransactionError, SystemProgram } from '@solana/web3.js'
 import useProgram from '../../utils/useProgram'
 import { getAuthAddress } from '../../utils/pda'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import { logActivity } from '../../utils/activity'
+import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 import './CreatorFees.css'
 
 
@@ -72,6 +73,7 @@ const CreatorFees = () => {
   const navigate = useNavigate()
   const { connection } = useConnection()
   const wallet = useWallet()
+  const { deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
 
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -190,18 +192,8 @@ const CreatorFees = () => {
     const programId = (program as any).programId as PublicKey
     const [authority] = await getAuthAddress(programId)
 
-    const creatorToken0 = getAssociatedTokenAddressSync(
-      pool.token0Mint,
-      wallet.publicKey,
-      false,
-      pool.token0Program
-    )
-    const creatorToken1 = getAssociatedTokenAddressSync(
-      pool.token1Mint,
-      wallet.publicKey,
-      false,
-      pool.token1Program
-    )
+    const creatorToken0 = deriveAta(wallet.publicKey, pool.token0Mint, pool.token0Program)
+    const creatorToken1 = deriveAta(wallet.publicKey, pool.token1Mint, pool.token1Program)
 
     setCollecting(pool.poolPda.toBase58())
     setStatus('Collecting creator fees...')
@@ -209,8 +201,26 @@ const CreatorFees = () => {
     setTxResult(null)
 
     try {
+      const creatorToken0AtaCtx = await buildEnsureAtaInstruction({
+        payer: wallet.publicKey,
+        owner: wallet.publicKey,
+        mint: pool.token0Mint,
+        tokenProgram: pool.token0Program,
+      })
+      const creatorToken1AtaCtx = await buildEnsureAtaInstruction({
+        payer: wallet.publicKey,
+        owner: wallet.publicKey,
+        mint: pool.token1Mint,
+        tokenProgram: pool.token1Program,
+      })
+      const preIxs = [
+        ...(creatorToken0AtaCtx.instruction ? [creatorToken0AtaCtx.instruction] : []),
+        ...(creatorToken1AtaCtx.instruction ? [creatorToken1AtaCtx.instruction] : []),
+      ]
+
       const signature = await (program.methods as any)
         .collectCreatorFee()
+        .preInstructions(preIxs)
         .accounts({
           creator: wallet.publicKey,
           authority,
@@ -241,6 +251,12 @@ const CreatorFees = () => {
       await loadPools()
     } catch (err: any) {
       console.error('Collect fees error:', err)
+      logActivity({
+        actionType: 'Fee Collection',
+        poolAddress: pool.poolPda.toBase58(),
+        tokenPair: `${pool.token0Mint.toBase58().slice(0, 4)}.../${pool.token1Mint.toBase58().slice(0, 4)}...`,
+        status: 'failed',
+      })
       if (err instanceof SendTransactionError) {
         const logs = await err.getLogs(connection).catch(() => null)
         setErrorDetails(logs?.length ? logs.join('\n') : err.message || String(err))
@@ -307,10 +323,11 @@ const CreatorFees = () => {
           title={errorDetails ? 'Collection Failed' : 'Status'}
           message={status}
           details={errorDetails}
-          onClose={() => {
+          // No onClose while status is 'info' — card stays until tx settles
+          onClose={errorDetails ? () => {
             setStatus(null)
             setErrorDetails(null)
-          }}
+          } : undefined}
         />
       )}
 

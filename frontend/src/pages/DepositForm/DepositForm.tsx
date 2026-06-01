@@ -3,11 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import './DepositForm.css'
 import useProgram from '../../utils/useProgram'
 import usePool from '../../hooks/usePool'
+import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 import { PublicKey, SendTransactionError } from '@solana/web3.js'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import * as anchor from '@coral-xyz/anchor'
 import { getAuthAddress, getPoolAddress, getPoolLpMintAddress, getPoolVaultAddress } from '../../utils/pda'
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getMint, getAccount } from '@solana/spl-token'
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, getMint, getAccount } from '@solana/spl-token'
 import copyIcon from '../../assets/copy.svg'
 import walletIcon from '../../assets/wallet.svg'
 import plusIcon from '../../assets/plus-circle.svg'
@@ -20,6 +21,8 @@ import { getShortTokenName, getPoolDisplayName } from '../../utils/token'
 import { formatAmount } from '../../utils/format'
 import idlJson from '../../../idl/raydium_cp_swap.json'
 import { logActivity } from '../../utils/activity'
+import { useDispatch } from 'react-redux'
+import { solanaApi } from '../../store/solanaApi'
 
 type Pool = {
   name?: string
@@ -51,6 +54,8 @@ export default function DepositForm() {
   const program = useProgram()
   const wallet = useWallet()
   const { connection } = useConnection()
+  const { detectTokenProgram, deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
+  const dispatch = useDispatch()
 
   const poolPdaParam = useMemo(() => {
     try {
@@ -257,23 +262,18 @@ export default function DepositForm() {
           throw new Error('Max retries reached')
         }
 
-        async function detectTokenProgram(connection: any, mint: PublicKey) {
-          const info = await connection.getAccountInfo(mint)
-          if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
-          if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
-          if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
-          return TOKEN_PROGRAM_ID
-        }
+        const tokenProgram0 = isSol0 ? TOKEN_PROGRAM_ID : await callWithRetry(() => detectTokenProgram(mint0)).catch(() => TOKEN_PROGRAM_ID)
+        const tokenProgram1 = isSol1 ? TOKEN_PROGRAM_ID : await callWithRetry(() => detectTokenProgram(mint1)).catch(() => TOKEN_PROGRAM_ID)
 
         if (dec0 === 0 && !isSol0) {
           try {
-            const mInfo = await callWithRetry(() => getMint(connection, mint0))
+            const mInfo = await callWithRetry(() => getMint(connection, mint0, 'confirmed', tokenProgram0))
             dec0 = mInfo.decimals
           } catch (e) {}
         }
         if (dec1 === 0 && !isSol1) {
           try {
-            const mInfo = await callWithRetry(() => getMint(connection, mint1))
+            const mInfo = await callWithRetry(() => getMint(connection, mint1, 'confirmed', tokenProgram1))
             dec1 = mInfo.decimals
           } catch (e) {}
         }
@@ -285,8 +285,7 @@ export default function DepositForm() {
           const solBal = await callWithRetry(() => connection.getBalance(owner))
           bal0 = fmt(solBal / 1e9)
         } else {
-          const tokenProgram0 = await callWithRetry(() => detectTokenProgram(connection, mint0)).catch(() => TOKEN_PROGRAM_ID)
-          const ata0 = getAssociatedTokenAddressSync(mint0, owner, true, tokenProgram0)
+          const ata0 = deriveAta(owner, mint0, tokenProgram0, true)
           const b0 = await callWithRetry(() => connection.getTokenAccountBalance(ata0)).catch(() => null)
           if (b0) {
             bal0 = b0.value.uiAmount != null ? fmt(b0.value.uiAmount) : fmt(Number(b0.value.amount) / Math.pow(10, dec0))
@@ -297,8 +296,7 @@ export default function DepositForm() {
           const solBal = await callWithRetry(() => connection.getBalance(owner))
           bal1 = fmt(solBal / 1e9)
         } else {
-          const tokenProgram1 = await callWithRetry(() => detectTokenProgram(connection, mint1)).catch(() => TOKEN_PROGRAM_ID)
-          const ata1 = getAssociatedTokenAddressSync(mint1, owner, true, tokenProgram1)
+          const ata1 = deriveAta(owner, mint1, tokenProgram1, true)
           const b1 = await callWithRetry(() => connection.getTokenAccountBalance(ata1)).catch(() => null)
           if (b1) {
             bal1 = b1.value.uiAmount != null ? fmt(b1.value.uiAmount) : fmt(Number(b1.value.amount) / Math.pow(10, dec1))
@@ -356,16 +354,6 @@ export default function DepositForm() {
     return numerator.add(new BN(9999)).div(new BN(10000))
   }
 
-  const detectTokenProgram = async (connectionRef: any, mint: PublicKey) => {
-    const info = await connectionRef.getAccountInfo(mint)
-    if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
-    if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
-    if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
-    return TOKEN_PROGRAM_ID
-  }
-
-
-
   const copyText = async (value?: string | null) => {
     if (!value) return
     try { await navigator.clipboard.writeText(value) } catch (e) { }
@@ -405,9 +393,9 @@ export default function DepositForm() {
     const [token1Vault] = await getPoolVaultAddress(poolAddr, t1 as PublicKey, programId)
 
     const connectionRef = (program.provider as any).connection
-    const token0Program = await detectTokenProgram(connectionRef, t0!)
-    const token1Program = await detectTokenProgram(connectionRef, t1!)
-    const lpTokenProgram = await detectTokenProgram(connectionRef, lpMint).catch(() => TOKEN_PROGRAM_ID)
+    const token0Program = await detectTokenProgram(t0!)
+    const token1Program = await detectTokenProgram(t1!)
+    const lpTokenProgram = await detectTokenProgram(lpMint).catch(() => TOKEN_PROGRAM_ID)
 
     const mint0 = await getMint(connectionRef, t0!, 'confirmed', token0Program)
     const mint1 = await getMint(connectionRef, t1!, 'confirmed', token1Program)
@@ -564,9 +552,9 @@ export default function DepositForm() {
       const [token1Vault] = await getPoolVaultAddress(poolAddr, t1 as PublicKey, programId)
 
       const connectionRef = (program.provider as any).connection
-      const token0Program = await detectTokenProgram(connectionRef, t0!)
-      const token1Program = await detectTokenProgram(connectionRef, t1!)
-      const lpTokenProgram = await detectTokenProgram(connectionRef, lpMint).catch(() => TOKEN_PROGRAM_ID)
+      const token0Program = await detectTokenProgram(t0!)
+      const token1Program = await detectTokenProgram(t1!)
+      const lpTokenProgram = await detectTokenProgram(lpMint).catch(() => TOKEN_PROGRAM_ID)
 
       const mint0 = await getMint(connectionRef, t0!, 'confirmed', token0Program)
       const mint1 = await getMint(connectionRef, t1!, 'confirmed', token1Program)
@@ -643,29 +631,42 @@ export default function DepositForm() {
       const max0WithBuffer = applyMaxBuffer(max0, maxSlippageBps)
       const max1WithBuffer = applyMaxBuffer(max1, maxSlippageBps)
 
-      const ownerLpToken = getAssociatedTokenAddressSync(lpMint, wallet.publicKey!, false, lpTokenProgram)
-      const ownerLpInfo = await connectionRef.getAccountInfo(ownerLpToken).catch(() => null)
-      const createLpAtaIx = !ownerLpInfo
-        ? createAssociatedTokenAccountInstruction(
-          wallet.publicKey!,
-          ownerLpToken,
-          wallet.publicKey!,
-          lpMint,
-          lpTokenProgram,
-          ASSOCIATED_TOKEN_PROGRAM_ID
-        )
-        : null
-      const ownerToken0Account = getAssociatedTokenAddressSync(t0!, wallet.publicKey!, false, token0Program)
-      const ownerToken1Account = getAssociatedTokenAddressSync(t1!, wallet.publicKey!, false, token1Program)
+      const ownerLpAtaCtx = await buildEnsureAtaInstruction({
+        payer: wallet.publicKey!,
+        owner: wallet.publicKey!,
+        mint: lpMint,
+        tokenProgram: lpTokenProgram,
+      })
+      const ownerToken0AtaCtx = await buildEnsureAtaInstruction({
+        payer: wallet.publicKey!,
+        owner: wallet.publicKey!,
+        mint: t0!,
+        tokenProgram: token0Program,
+      })
+      const ownerToken1AtaCtx = await buildEnsureAtaInstruction({
+        payer: wallet.publicKey!,
+        owner: wallet.publicKey!,
+        mint: t1!,
+        tokenProgram: token1Program,
+      })
+
+      const ownerLpToken = ownerLpAtaCtx.ata
+      const ownerToken0Account = ownerToken0AtaCtx.ata
+      const ownerToken1Account = ownerToken1AtaCtx.ata
 
       const impliedLpAnchor = new anchor.BN(impliedLp.toString())
       const max0Anchor = new anchor.BN(max0WithBuffer.toString())
       const max1Anchor = new anchor.BN(max1WithBuffer.toString())
 
+      setStatus('Sending deposit transaction...')
       try {
         const tx = await (program as any).methods
           .deposit(impliedLpAnchor, max0Anchor, max1Anchor)
-          .preInstructions(createLpAtaIx ? [createLpAtaIx] : [])
+          .preInstructions([
+            ...(ownerLpAtaCtx.instruction ? [ownerLpAtaCtx.instruction] : []),
+            ...(ownerToken0AtaCtx.instruction ? [ownerToken0AtaCtx.instruction] : []),
+            ...(ownerToken1AtaCtx.instruction ? [ownerToken1AtaCtx.instruction] : []),
+          ])
           .accounts({
             owner: wallet.publicKey,
             authority,
@@ -691,16 +692,28 @@ export default function DepositForm() {
           signature: tx,
           status: 'success',
         })
+        dispatch(solanaApi.util.invalidateTags([{ type: 'Pools', id: 'LIST' }, { type: 'Portfolio', id: 'LIST' }]))
         await refetchPoolStateAfterTx(tx)
         setStatus(null)
         setBusy(false)
       } catch (err: any) {
+        logActivity({
+          actionType: 'Deposit',
+          poolAddress: poolAddr?.toBase58?.(),
+          tokenPair: `${getShortTokenName(token0Str)}/${getShortTokenName(token1Str)}`,
+          status: 'failed',
+        })
         await showSendErrorDetails(err, wallet.publicKey ?? undefined)
         setBusy(false)
       }
 
       return
     } catch (err: any) {
+      logActivity({
+        actionType: 'Deposit',
+        tokenPair: `${getShortTokenName(token0Str)}/${getShortTokenName(token1Str)}`,
+        status: 'failed',
+      })
       await showSendErrorDetails(err, wallet.publicKey ?? undefined)
       setBusy(false)
     }
@@ -793,10 +806,11 @@ export default function DepositForm() {
                   title={errorDetails ? 'Transaction Failed' : 'Status'}
                   message={status}
                   details={errorDetails}
-                  onClose={() => {
+                  // No onClose while status is 'info' — card stays until tx settles
+                  onClose={errorDetails ? () => {
                     setStatus(null)
                     setErrorDetails(null)
-                  }}
+                  } : undefined}
                 />
               )}
 

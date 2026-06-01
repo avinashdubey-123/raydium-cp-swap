@@ -9,11 +9,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import * as anchor from '@coral-xyz/anchor'
 import { getAuthAddress, getPoolAddress, getPoolVaultAddress, getOrcleAccountAddress } from '../../utils/pda'
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountIdempotentInstruction,
-  getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
   getMint,
   getAccount,
 } from '@solana/spl-token'
@@ -28,7 +24,8 @@ import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import idlJson from '../../../idl/raydium_cp_swap.json'
 import { logActivity } from '../../utils/activity'
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+import { useGetPoolsQuery } from '../../store/solanaApi'
+import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
 
@@ -49,9 +46,6 @@ type Pool = {
   decimals0?: number
   decimals1?: number
 }
-
-const POOLS_CACHE: Map<string, { ts: number; pools: any[] }> = new Map()
-const POOLS_PROMISE: Map<string, Promise<any>> = new Map()
 
 type PoolData = {
   poolPda: string
@@ -80,17 +74,39 @@ export default function Swap() {
   const program = useProgram()
   const wallet = useWallet()
   const { connection } = useConnection()
+  const { detectTokenProgram, deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
+  const { data: poolsData, isLoading: loadingPools, error: poolsQueryError, refetch: refetchPools } = useGetPoolsQuery()
 
-  const [allPools, setAllPools] = useState<PoolData[]>([])
-  const [loadingPools, setLoadingPools] = useState(false)
-  const [poolsError, setPoolsError] = useState<string | null>(null)
+  const allPools = useMemo<PoolData[]>(() => (poolsData?.pools as PoolData[] | undefined) ?? [], [poolsData])
+  const ammConfigs = useMemo<any[]>(() => poolsData?.ammConfigs ?? [], [poolsData])
+  const poolsError = useMemo(() => {
+    if (!poolsQueryError) return null
+    const raw = (poolsQueryError as any).error ?? (poolsQueryError as any).data ?? poolsQueryError
+    return typeof raw === 'string' ? raw : JSON.stringify(raw)
+  }, [poolsQueryError])
+
   const [selectedPool, setSelectedPool] = useState<PoolData | null>(null)
   const [showPoolSelector, setShowPoolSelector] = useState(false)
-  const [poolsReloadKey, setPoolsReloadKey] = useState(0)
   const [swapDirection, setSwapDirection] = useState<SwapDirection>('token0-to-token1')
-  const [ammConfigs, setAmmConfigs] = useState<any[]>([])
   const [poolHoverInfo, setPoolHoverInfo] = useState<{ poolId?: string | null; token0?: string | null; token1?: string | null } | null>(null)
   const poolHoverTimeout = useRef<number | null>(null)
+
+  const routePoolPda = poolFromRoute?.poolPda
+  const routeMatchedPool = useMemo<PoolData | null>(() => {
+    if (!routePoolPda) return null
+    return allPools.find((pool) => pool.poolPda === routePoolPda) ?? null
+  }, [allPools, routePoolPda])
+
+  useEffect(() => {
+    if (selectedPool || allPools.length === 0) return
+    if (routeMatchedPool) {
+      setSelectedPool(routeMatchedPool)
+      return
+    }
+    if (!poolFromRoute) {
+      setSelectedPool(allPools[0])
+    }
+  }, [selectedPool, allPools, routeMatchedPool, poolFromRoute])
 
   const clearPoolHoverTimeout = () => {
     if (poolHoverTimeout.current != null) {
@@ -150,250 +166,16 @@ export default function Swap() {
     return `${(feeRateNum / 10000).toFixed(2)}%`
   }
 
-  const detectTokenProgram = async (mint: PublicKey) => {
-    const info = await connection.getAccountInfo(mint)
-    if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
-    if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
-    if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
-    return TOKEN_PROGRAM_ID
-  }
-
-  const ensureAssociatedTokenAccount = async (payer: PublicKey, owner: PublicKey, mint: PublicKey, tokenProgram: PublicKey) => {
-    const ata = getAssociatedTokenAddressSync(mint, owner, false, tokenProgram)
-    const info = await connection.getAccountInfo(ata)
-    if (info) return ata
-
-    const tx = new anchor.web3.Transaction().add(
-      createAssociatedTokenAccountIdempotentInstruction(
-        payer,
-        ata,
-        owner,
-        mint,
-        tokenProgram,
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-      ),
-    )
-    const latest = await connection.getLatestBlockhash('confirmed')
-    tx.feePayer = payer
-    tx.recentBlockhash = latest.blockhash
-    await wallet.sendTransaction(tx, connection)
-    return ata
-  }
-
-  useEffect(() => {
-    let mounted = true
-
-    async function loadPoolsWithRetry() {
-      setLoadingPools(true)
-      setPoolsError(null)
-      const maxAttempts = 5
-      let attempt = 0
-      let lastErr: any = null
-
-      const endpoint = (connection as any)?.rpcEndpoint || (connection as any)?._rpcEndpoint || ''
-      const cacheEntry = POOLS_CACHE.get(endpoint)
-      const cacheTtl = 60 * 1000
-      if (cacheEntry && Date.now() - cacheEntry.ts < cacheTtl) {
-        if (mounted) {
-          setAllPools(cacheEntry.pools)
-          setLoadingPools(false)
-        }
-        return
-      }
-
-      if (POOLS_PROMISE.has(endpoint)) {
-        try {
-          const res = await POOLS_PROMISE.get(endpoint)
-          if (mounted) {
-            setAllPools(res)
-            setLoadingPools(false)
-          }
-          return
-        } catch (e) {
-        }
-      }
-
-      while (attempt < maxAttempts && mounted) {
-        attempt++
-        try {
-          const work = (async () => {
-            let accounts: Array<any> = []
-            let fetchedConfigs: any[] = []
-            if (program) {
-              const [allPoolsRes, allConfigsRes] = await Promise.all([
-                (program.account as any).poolState.all(),
-                (program.account as any).ammConfig.all()
-              ])
-              accounts = allPoolsRes.map((a: any) => ({ pubkey: a.publicKey, account: a.account }))
-              fetchedConfigs = allConfigsRes.map((c: any) => ({
-                ...c.account,
-                publicKey: c.publicKey,
-              }))
-            } else {
-              const raw = await connection.getProgramAccounts(PROGRAM_ID)
-              const coder = new anchor.BorshAccountsCoder(idlJson as any)
-              accounts = []
-              for (const r of raw) {
-                try {
-                  const data = r.account.data as any
-                  let buf: Buffer
-
-                  if (Buffer.isBuffer(data)) {
-                    buf = data
-                  } else if (data instanceof Uint8Array) {
-                    buf = Buffer.from(data)
-                  } else if (typeof data === 'string') {
-                    buf = Buffer.from(data, 'base64')
-                  } else if (Array.isArray(data) && (data as any).length > 0) {
-                    buf = Buffer.from((data as any)[0], 'base64')
-                  } else {
-                    continue
-                  }
-
-                  let decodedPool: any = null
-                  try { decodedPool = coder.decode('PoolState', buf) } catch (e1) {
-                    try { decodedPool = coder.decode('poolState', buf) } catch (e2) {
-                      try { decodedPool = coder.decode('pool_state', buf) } catch (e3) { decodedPool = null }
-                    }
-                  }
-
-                  if (decodedPool) {
-                    accounts.push({ pubkey: r.pubkey, account: decodedPool })
-                    continue
-                  }
-
-                  let decodedConfig: any = null
-                  try { decodedConfig = coder.decode('AmmConfig', buf) } catch (e1) {
-                    try { decodedConfig = coder.decode('ammConfig', buf) } catch (e2) {
-                      try { decodedConfig = coder.decode('amm_config', buf) } catch (e3) { decodedConfig = null }
-                    }
-                  }
-
-                  if (decodedConfig) {
-                    fetchedConfigs.push({
-                      ...decodedConfig,
-                      publicKey: r.pubkey,
-                    })
-                  }
-                } catch (err: any) { }
-              }
-            }
-
-            if (mounted) {
-              setAmmConfigs(fetchedConfigs)
-            }
-
-            const toPubString = (v: any) => {
-              if (!v) return null
-              if (typeof v === 'string') return v
-              if (v?.toBase58) return v.toBase58()
-              try { return String(v) } catch { return null }
-            }
-
-            const mapped: PoolData[] = []
-            for (const a of accounts) {
-              try {
-                const acc = a.account
-                const poolPda = a.pubkey ? (a.pubkey.toBase58 ? a.pubkey.toBase58() : String(a.pubkey)) : null
-
-                if (!poolPda) continue
-
-                const token0 = toPubString(
-                  acc.token_0_mint ?? acc.token0Mint ?? acc.mint_0 ?? acc.mint0 ??
-                  acc.mint_0_mint ?? acc.mint_0_pubkey ?? acc.token0_mint ?? acc.tokenMint0 ??
-                  acc.mintA ?? acc.mint_a
-                )
-                const token1 = toPubString(
-                  acc.token_1_mint ?? acc.token1Mint ?? acc.mint_1 ?? acc.mint1 ??
-                  acc.mint_1_mint ?? acc.mint_1_pubkey ?? acc.token1_mint ?? acc.tokenMint1 ??
-                  acc.mintB ?? acc.mint_b
-                )
-                const ammConfig = toPubString(
-                  acc.amm_config ?? acc.ammConfig ?? acc.amm_config_key ?? acc.ammConfigKey ?? acc.amm
-                )
-
-                mapped.push({
-                  poolPda,
-                  token0,
-                  token1,
-                  ammConfig,
-                  raw: acc,
-                })
-              } catch (err) {
-                // skip invalid pools
-              }
-            }
-
-            const poolsWithPrices = await Promise.all(
-              mapped.map(async (pool) => {
-                try {
-                  const acc = pool.raw
-                  const vault0Key = acc.token0Vault ?? acc.token_0_vault ?? acc.vault0 ?? acc.token_0_vault_address
-                  const vault1Key = acc.token1Vault ?? acc.token_1_vault ?? acc.vault1 ?? acc.token_1_vault_address
-                  const dec0 = Number(acc.mint_0_decimals ?? acc.mint0Decimals ?? acc.decimals0 ?? 0)
-                  const dec1 = Number(acc.mint_1_decimals ?? acc.mint1Decimals ?? acc.decimals1 ?? 0)
-
-                  if (!vault0Key || !vault1Key) return { ...pool, price: '-' }
-
-                  const v0Pub = new PublicKey(typeof vault0Key === 'string' ? vault0Key : vault0Key.toBase58 ? vault0Key.toBase58() : String(vault0Key))
-                  const v1Pub = new PublicKey(typeof vault1Key === 'string' ? vault1Key : vault1Key.toBase58 ? vault1Key.toBase58() : String(vault1Key))
-
-                  const [b0, b1] = await Promise.all([
-                    connection.getTokenAccountBalance(v0Pub).catch(() => null),
-                    connection.getTokenAccountBalance(v1Pub).catch(() => null),
-                  ])
-
-                  if (!b0 || !b1) return { ...pool, price: '-' }
-
-                  const amount0 = b0.value.uiAmount ?? (Number(b0.value.amount) / Math.pow(10, dec0))
-                  const amount1 = b1.value.uiAmount ?? (Number(b1.value.amount) / Math.pow(10, dec1))
-
-                  if (!amount0 || !amount1 || amount0 === 0) return { ...pool, price: '0.00' }
-
-                  const price = amount1 / amount0
-                  return { ...pool, price: formatAmount(price) }
-                } catch (e) {
-                  return { ...pool, price: '-' }
-                }
-              })
-            )
-
-            try { POOLS_CACHE.set(endpoint, { ts: Date.now(), pools: poolsWithPrices }) } catch (e) { }
-            return poolsWithPrices
-          })()
-          POOLS_PROMISE.set(endpoint, work)
-          const mapped = await work
-          POOLS_PROMISE.delete(endpoint)
-
-          if (mounted) {
-            setAllPools(mapped)
-          }
-          lastErr = null
-          break
-        } catch (err: any) {
-          lastErr = err
-          console.error('Error loading pools (attempt', attempt, '):', err)
-          const msg = (err?.message || String(err) || '').toLowerCase()
-          if (msg.includes('429') || msg.includes('too many requests')) {
-            const backoff = Math.min(1000 * Math.pow(2, attempt - 1), 8000) + Math.round(Math.random() * 300)
-            await sleep(backoff)
-            continue
-          }
-          break
-        }
-      }
-
-      if (mounted) {
-        if (lastErr) setPoolsError(lastErr?.message || String(lastErr))
-        setLoadingPools(false)
+  const activePool = useMemo(() => {
+    if (selectedPool) return selectedPool
+    if (routeMatchedPool) {
+      return {
+        ...poolFromRoute,
+        ...routeMatchedPool,
       }
     }
-
-    loadPoolsWithRetry()
-    return () => { mounted = false }
-  }, [program, connection, poolFromRoute, poolsReloadKey])
-
-  const activePool = selectedPool || poolFromRoute
+    return poolFromRoute
+  }, [selectedPool, routeMatchedPool, poolFromRoute])
 
   const poolPdaParam = useMemo(() => {
     if (!activePool?.poolPda) return undefined
@@ -405,22 +187,24 @@ export default function Swap() {
   }, [activePool?.poolPda])
 
   const token0MintParam = useMemo(() => {
-    if (!activePool?.token0) return undefined
+    const mint0 = (activePool as any)?.token0 ?? (activePool as any)?.token0Mint
+    if (!mint0) return undefined
     try {
-      return new PublicKey(activePool.token0)
+      return new PublicKey(mint0)
     } catch (e) {
       return undefined
     }
-  }, [activePool?.token0])
+  }, [activePool])
 
   const token1MintParam = useMemo(() => {
-    if (!activePool?.token1) return undefined
+    const mint1 = (activePool as any)?.token1 ?? (activePool as any)?.token1Mint
+    if (!mint1) return undefined
     try {
-      return new PublicKey(activePool.token1)
+      return new PublicKey(mint1)
     } catch (e) {
       return undefined
     }
-  }, [activePool?.token1])
+  }, [activePool])
 
   const ammConfigParam = useMemo(() => {
     if (!activePool?.ammConfig) return undefined
@@ -727,15 +511,18 @@ export default function Swap() {
           throw new Error('Max retries reached')
         }
 
+        const tokenProgram0 = isSol0 ? TOKEN_PROGRAM_ID : await callWithRetry(() => detectTokenProgram(mint0)).catch(() => TOKEN_PROGRAM_ID)
+        const tokenProgram1 = isSol1 ? TOKEN_PROGRAM_ID : await callWithRetry(() => detectTokenProgram(mint1)).catch(() => TOKEN_PROGRAM_ID)
+
         if (dec0 === 0 && !isSol0) {
           try {
-            const mInfo = await callWithRetry(() => getMint(connection, mint0))
+            const mInfo = await callWithRetry(() => getMint(connection, mint0, 'confirmed', tokenProgram0))
             dec0 = mInfo.decimals
           } catch (e) {}
         }
         if (dec1 === 0 && !isSol1) {
           try {
-            const mInfo = await callWithRetry(() => getMint(connection, mint1))
+            const mInfo = await callWithRetry(() => getMint(connection, mint1, 'confirmed', tokenProgram1))
             dec1 = mInfo.decimals
           } catch (e) {}
         }
@@ -747,8 +534,7 @@ export default function Swap() {
           const solBal = await callWithRetry(() => connection.getBalance(owner))
           bal0 = fmt(solBal / 1e9)
         } else {
-          const tokenProgram0 = await callWithRetry(() => detectTokenProgram(mint0)).catch(() => TOKEN_PROGRAM_ID)
-          const ata0 = getAssociatedTokenAddressSync(mint0, owner, true, tokenProgram0)
+          const ata0 = deriveAta(owner, mint0, tokenProgram0, true)
           const b0 = await callWithRetry(() => connection.getTokenAccountBalance(ata0)).catch(() => null)
           if (b0) {
             bal0 = b0.value.uiAmount != null ? fmt(b0.value.uiAmount) : fmt(Number(b0.value.amount) / Math.pow(10, dec0))
@@ -759,8 +545,7 @@ export default function Swap() {
           const solBal = await callWithRetry(() => connection.getBalance(owner))
           bal1 = fmt(solBal / 1e9)
         } else {
-          const tokenProgram1 = await callWithRetry(() => detectTokenProgram(mint1)).catch(() => TOKEN_PROGRAM_ID)
-          const ata1 = getAssociatedTokenAddressSync(mint1, owner, true, tokenProgram1)
+          const ata1 = deriveAta(owner, mint1, tokenProgram1, true)
           const b1 = await callWithRetry(() => connection.getTokenAccountBalance(ata1)).catch(() => null)
           if (b1) {
             bal1 = b1.value.uiAmount != null ? fmt(b1.value.uiAmount) : fmt(Number(b1.value.amount) / Math.pow(10, dec1))
@@ -831,18 +616,18 @@ export default function Swap() {
     const [token1Vault] = await getPoolVaultAddress(poolAddr, t1 as PublicKey, programId)
     const inputTokenProgram = await detectTokenProgram(t0 as PublicKey)
     const outputTokenProgram = await detectTokenProgram(t1 as PublicKey)
-    const inputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(t0!, ownerPublicKey, false, inputTokenProgram) : null
-    const outputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(t1!, ownerPublicKey, false, outputTokenProgram) : null
+    const inputTokenAccount = ownerPublicKey ? deriveAta(ownerPublicKey, t0!, inputTokenProgram) : null
+    const outputTokenAccount = ownerPublicKey ? deriveAta(ownerPublicKey, t1!, outputTokenProgram) : null
 
     let mint0: any = { decimals: 9 }
     let mint1: any = { decimals: 9 }
-    try { mint0 = await getMint(connection, t0!) } catch(e) {}
-    try { mint1 = await getMint(connection, t1!) } catch(e) {}
+    try { mint0 = await getMint(connection, t0!, 'confirmed', inputTokenProgram) } catch(e) {}
+    try { mint1 = await getMint(connection, t1!, 'confirmed', outputTokenProgram) } catch(e) {}
 
     let vault0Amount = new BN(0)
     let vault1Amount = new BN(0)
     try {
-      const vault0Acct = await getAccount(connection, token0Vault)
+      const vault0Acct = await getAccount(connection, token0Vault, 'confirmed', inputTokenProgram)
       vault0Amount = new BN(vault0Acct.amount.toString())
     } catch(e) {
       try {
@@ -852,7 +637,7 @@ export default function Swap() {
     }
 
     try {
-      const vault1Acct = await getAccount(connection, token1Vault)
+      const vault1Acct = await getAccount(connection, token1Vault, 'confirmed', outputTokenProgram)
       vault1Amount = new BN(vault1Acct.amount.toString())
     } catch(e) {
       try {
@@ -887,9 +672,15 @@ export default function Swap() {
     const totalVault0 = vault0Amount.sub(feesToken0)
     const totalVault1 = vault1Amount.sub(feesToken1)
 
-    const matchedConfig = ammConfigs.find(
-      (c) => c.publicKey?.toBase58() === ammConfigParam?.toBase58()
-    )
+    const targetAmmConfig = ammConfigParam?.toBase58()
+    const matchedConfig = ammConfigs.find((c) => {
+      const key = typeof c.publicKey === 'string'
+        ? c.publicKey
+        : c.publicKey?.toBase58
+          ? c.publicKey.toBase58()
+          : String(c.publicKey)
+      return key === targetAmmConfig
+    })
 
     let ammConfigAcct: any = matchedConfig
     if (!ammConfigAcct) {
@@ -955,8 +746,8 @@ export default function Swap() {
     const outputVault = inputIsToken0 ? ctx.token1Vault : ctx.token0Vault
     const inputTokenProgram = await detectTokenProgram(inputMint)
     const outputTokenProgram = await detectTokenProgram(outputMint)
-    const inputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(inputMint, ownerPublicKey, false, inputTokenProgram) : null
-    const outputTokenAccount = ownerPublicKey ? getAssociatedTokenAddressSync(outputMint, ownerPublicKey, false, outputTokenProgram) : null
+    const inputTokenAccount = ownerPublicKey ? deriveAta(ownerPublicKey, inputMint, inputTokenProgram) : null
+    const outputTokenAccount = ownerPublicKey ? deriveAta(ownerPublicKey, outputMint, outputTokenProgram) : null
     const totalInputAmount = inputIsToken0 ? ctx.totalVault0 : ctx.totalVault1
     const totalOutputAmount = inputIsToken0 ? ctx.totalVault1 : ctx.totalVault0
     const creatorFeeOnInput = ctx.creatorFeeOn === 0 || (ctx.creatorFeeOn === 1 && inputIsToken0) || (ctx.creatorFeeOn === 2 && !inputIsToken0)
@@ -1109,11 +900,11 @@ export default function Swap() {
       })
 
       try {
-        if (ctx.totalVault0.gt(new BN(0)) && ctx.totalVault1.gt(new BN(0))) {
-          const exactInQuote = await quoteExactIn('1', 'token0-to-token1')
-          const inverseInQuote = await quoteExactIn('1', 'token1-to-token0')
-          const p0 = Number(formatBaseUnitsToHuman(exactInQuote.receiveAmount, exactInQuote.outputDecimals))
-          const p1 = Number(formatBaseUnitsToHuman(inverseInQuote.receiveAmount, inverseInQuote.outputDecimals))
+        const r0Num = Number(r0)
+        const r1Num = Number(r1)
+        if (r0Num > 0 && r1Num > 0) {
+          const p0 = r1Num / r0Num
+          const p1 = r0Num / r1Num
           setPriceDetails({
             token0ToToken1: formatAmount(p0),
             token1ToToken0: formatAmount(p1),
@@ -1163,8 +954,23 @@ export default function Swap() {
       const payer = wallet.publicKey!
       const ctx = await loadSwapContext(payer)
       const direction = await getDirectionalContext(ctx, payer)
-      await ensureAssociatedTokenAccount(payer, payer, direction.inputMint, direction.inputTokenProgram)
-      await ensureAssociatedTokenAccount(payer, payer, direction.outputMint, direction.outputTokenProgram)
+      const inputAtaCtx = await buildEnsureAtaInstruction({
+        payer,
+        owner: payer,
+        mint: direction.inputMint,
+        tokenProgram: direction.inputTokenProgram,
+      })
+      const outputAtaCtx = await buildEnsureAtaInstruction({
+        payer,
+        owner: payer,
+        mint: direction.outputMint,
+        tokenProgram: direction.outputTokenProgram,
+      })
+
+      const preIxs = [
+        ...(inputAtaCtx.instruction ? [inputAtaCtx.instruction] : []),
+        ...(outputAtaCtx.instruction ? [outputAtaCtx.instruction] : []),
+      ]
 
       if (lastEditedField === 'input') {
         if (Number(amountIn || '0') <= 0) {
@@ -1175,9 +981,11 @@ export default function Swap() {
         const quote = await quoteExactIn(amountIn)
         const minimumAmountOut = quote.receiveAmount.mul(new BN(99)).div(new BN(100))
 
+        setStatus('Sending swap transaction...')
         try {
           const tx = await (program as any).methods
             .swapBaseInput(new anchor.BN(quote.inputBase.toString()), new anchor.BN(minimumAmountOut.toString()))
+            .preInstructions(preIxs)
             .accounts({
               payer: wallet.publicKey,
               authority,
@@ -1208,10 +1016,17 @@ export default function Swap() {
           await loadPrices()
           setStatus(null)
           setBusy(false)
+          return
         } catch (err: any) {
           if (!isAlreadyProcessedError(err)) {
             console.error('Swap transaction failed:', err)
           }
+          logActivity({
+            actionType: 'Swap',
+            poolAddress: ctx.poolAddr?.toBase58?.(),
+            tokenPair: `${inputTokenShort}/${outputTokenShort}`,
+            status: 'failed',
+          })
           await showSendErrorDetails(err, wallet.publicKey ?? undefined)
           setBusy(false)
         }
@@ -1224,9 +1039,11 @@ export default function Swap() {
         const quote = await quoteExactOut(amountOut)
         const maximumInputPreFee = quote.maxInputPreFee.mul(new BN(101)).div(new BN(100))
 
+        setStatus('Sending swap transaction...')
         try {
           const tx = await (program as any).methods
             .swapBaseOutput(new anchor.BN(maximumInputPreFee.toString()), new anchor.BN(quote.desiredOutputBase.toString()))
+            .preInstructions(preIxs)
             .accounts({
               payer: wallet.publicKey,
               authority,
@@ -1261,11 +1078,22 @@ export default function Swap() {
           if (!isAlreadyProcessedError(err)) {
             console.error('Swap transaction failed:', err)
           }
+          logActivity({
+            actionType: 'Swap',
+            poolAddress: ctx.poolAddr?.toBase58?.(),
+            tokenPair: `${inputTokenShort}/${outputTokenShort}`,
+            status: 'failed',
+          })
           await showSendErrorDetails(err, wallet.publicKey ?? undefined)
           setBusy(false)
         }
       }
     } catch (err: any) {
+      logActivity({
+        actionType: 'Swap',
+        tokenPair: `${inputTokenShort}/${outputTokenShort}`,
+        status: 'failed',
+      })
       await showSendErrorDetails(err, wallet.publicKey ?? undefined)
       setBusy(false)
     }
@@ -1386,10 +1214,11 @@ export default function Swap() {
                   title={errorDetails ? 'Transaction Failed' : 'Status'}
                   message={status}
                   details={errorDetails}
-                  onClose={() => {
+                  // No onClose while status is 'info' — card stays until tx settles
+                  onClose={errorDetails ? () => {
                     setStatus(null)
                     setErrorDetails(null)
-                  }}
+                  } : undefined}
                 />
               )}
 
@@ -1467,7 +1296,7 @@ export default function Swap() {
                           <div className="swap-pool-item swap-pool-empty">
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                               <span>Error loading pools</span>
-                              <button className="swap-pool-retry" onClick={() => { setPoolsError(null); setPoolsReloadKey((k) => k + 1) }}>Retry</button>
+                              <button className="swap-pool-retry" onClick={() => { void refetchPools() }}>Retry</button>
                             </div>
                             <div style={{ marginTop: 6, fontSize: 12, color: 'var(--if-text-secondary)' }}>{poolsError}</div>
                           </div>

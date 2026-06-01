@@ -6,7 +6,6 @@ import * as anchor from '@coral-xyz/anchor'
 import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import {
     getAccount,
-    getAssociatedTokenAddressSync,
     getMint,
     TOKEN_2022_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
@@ -18,6 +17,7 @@ import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import { RoundDirection } from '../../utils/curve/calculator'
 import { computeTransferFeeForPre } from '../../utils/curve/fee'
 import { logActivity } from '../../utils/activity'
+import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 import './WithdrawForm.css'
 
 export type WithdrawState = {
@@ -72,14 +72,6 @@ const toPublicKey = (value?: string | PublicKey | null) => {
     }
 }
 
-const detectTokenProgram = async (connectionRef: any, mint: PublicKey) => {
-    const info = await connectionRef.getAccountInfo(mint)
-    if (!info) throw new Error(`Mint not found: ${mint.toBase58()}`)
-    if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
-    if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
-    return TOKEN_PROGRAM_ID
-}
-
 function WithdrawFormContent({ state, onClose, embedded = false }: { state: WithdrawState; onClose: () => void; embedded?: boolean }) {
     const [percent, setPercent] = useState(100)
     const [keepPositionOpen, setKeepPositionOpen] = useState(false)
@@ -100,6 +92,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
     const program = useProgram()
     const { connection } = useConnection()
     const wallet = useWallet()
+    const { detectTokenProgram, deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
 
     const poolName = state.name || `${state.token0Symbol || 'TOKEN0'}/${state.token1Symbol || 'TOKEN1'}`
     const token0Symbol = state.token0Symbol || 'TOKEN0'
@@ -148,19 +141,37 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
             const [token0Vault] = await getPoolVaultAddress(poolPda, token0Mint, programId)
             const [token1Vault] = await getPoolVaultAddress(poolPda, token1Mint, programId)
 
-            const token0Program = await detectTokenProgram(connection, token0Mint)
-            const token1Program = await detectTokenProgram(connection, token1Mint)
-            const lpTokenProgram = await detectTokenProgram(connection, lpMint)
+            const token0Program = await detectTokenProgram(token0Mint)
+            const token1Program = await detectTokenProgram(token1Mint)
+            const lpTokenProgram = await detectTokenProgram(lpMint)
 
-            const ownerLpToken = getAssociatedTokenAddressSync(lpMint, wallet.publicKey, false, lpTokenProgram as PublicKey)
-            const ownerToken0Account = getAssociatedTokenAddressSync(token0Mint, wallet.publicKey, false, token0Program as PublicKey)
-            const ownerToken1Account = getAssociatedTokenAddressSync(token1Mint, wallet.publicKey, false, token1Program as PublicKey)
+            const ownerLpToken = deriveAta(wallet.publicKey, lpMint, lpTokenProgram as PublicKey)
+            const ownerToken0AtaCtx = await buildEnsureAtaInstruction({
+                payer: wallet.publicKey,
+                owner: wallet.publicKey,
+                mint: token0Mint,
+                tokenProgram: token0Program,
+            })
+            const ownerToken1AtaCtx = await buildEnsureAtaInstruction({
+                payer: wallet.publicKey,
+                owner: wallet.publicKey,
+                mint: token1Mint,
+                tokenProgram: token1Program,
+            })
+
+            const ownerToken0Account = ownerToken0AtaCtx.ata
+            const ownerToken1Account = ownerToken1AtaCtx.ata
+            const preIxs = [
+                ...(ownerToken0AtaCtx.instruction ? [ownerToken0AtaCtx.instruction] : []),
+                ...(ownerToken1AtaCtx.instruction ? [ownerToken1AtaCtx.instruction] : []),
+            ]
 
             const [authority] = await getAuthAddress(programId)
 
             setTxState({ status: 'info', title: 'Sending', message: 'Sending withdraw transaction...' })
             const tx = await program.methods
                 .withdraw(new anchor.BN(quote.lpInput.toString()), new anchor.BN(quote.receive0.toString()), new anchor.BN(quote.receive1.toString()))
+                .preInstructions(preIxs)
                 .accounts({
                     owner: wallet.publicKey,
                     authority,
@@ -203,6 +214,12 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 message: 'Transaction failed',
                 details: message,
             })
+            logActivity({
+                actionType: 'Withdraw',
+                poolAddress: state.poolPda,
+                tokenPair: `${token0Symbol}/${token1Symbol}`,
+                status: 'failed',
+            })
             console.error('Withdraw failed:', err)
         } finally {
             setBusy(false)
@@ -228,9 +245,9 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const [token0Vault] = await getPoolVaultAddress(poolPda, token0Mint, programId)
                 const [token1Vault] = await getPoolVaultAddress(poolPda, token1Mint, programId)
 
-                const token0Program = await detectTokenProgram(connection, token0Mint)
-                const token1Program = await detectTokenProgram(connection, token1Mint)
-                const lpTokenProgram = await detectTokenProgram(connection, lpMint)
+                const token0Program = await detectTokenProgram(token0Mint)
+                const token1Program = await detectTokenProgram(token1Mint)
+                const lpTokenProgram = await detectTokenProgram(lpMint)
 
                 const mint0 = await getMint(connection, token0Mint, 'confirmed', token0Program)
                 const mint1 = await getMint(connection, token1Mint, 'confirmed', token1Program)
@@ -257,7 +274,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const totalVault0 = poolVault0Amount.sub(feesToken0)
                 const totalVault1 = poolVault1Amount.sub(feesToken1)
 
-                const ownerLpToken = getAssociatedTokenAddressSync(lpMint, wallet.publicKey, false, lpTokenProgram as PublicKey)
+                const ownerLpToken = deriveAta(wallet.publicKey, lpMint, lpTokenProgram as PublicKey)
                 const ownerLpAcct = await getAccount(connection, ownerLpToken, 'confirmed', lpTokenProgram)
                 const ownerLpBalance = new BN(ownerLpAcct.amount.toString())
 
@@ -406,7 +423,9 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                         signature={txState.signature}
                         explorerUrl={getExplorerUrl(txState.signature)}
                         details={txState.details}
-                        onClose={() => setTxState(null)}
+                        // Don't provide onClose while the tx is in-flight so the
+                        // card cannot auto-dismiss before the transaction settles.
+                        onClose={txState.status !== 'info' ? () => setTxState(null) : undefined}
                     />
                 )}
                 <button className="withdraw-confirm" onClick={onConfirmWithdraw} disabled={busy || quoteLoading}>Confirm</button>

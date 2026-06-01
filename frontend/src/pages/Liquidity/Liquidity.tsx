@@ -1,16 +1,14 @@
 import { useNavigate } from 'react-router-dom'
 import './Liquidity.css'
 import usePool from '../../hooks/usePool'
-import useProgram from '../../utils/useProgram'
 import { PublicKey } from '@solana/web3.js'
-import * as anchor from '@coral-xyz/anchor'
-import idlJson from '../../../idl/raydium_cp_swap.json'
 import { useConnection } from '@solana/wallet-adapter-react'
 import { getPoolAddress, getPoolVaultAddress } from '../../utils/pda'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef, memo } from 'react'
 import copyIcon from '../../assets/copy.svg'
 import swapIcon from '../../assets/swap.svg'
 import { getShortTokenName, getPoolDisplayName } from '../../utils/token'
+import { useGetPoolsQuery } from '../../store/solanaApi'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
 
@@ -230,214 +228,19 @@ function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; amm
   )
 }
 
+const MemoPoolRow = memo(PoolRow)
+
 const Liquidity = () => {
   const navigate = useNavigate()
-  const program = useProgram()
-  const { connection } = useConnection()
-  const [pools, setPools] = useState<any[]>([])
-  const [ammConfigs, setAmmConfigs] = useState<any[]>([])
-  const [loadingPools, setLoadingPools] = useState(true)
-  const [poolsError, setPoolsError] = useState<string | null>(null)
+  const { data, isLoading: loadingPools, error } = useGetPoolsQuery()
   const [searchQuery, setSearchQuery] = useState('')
-
-  useEffect(() => {
-    let mounted = true
-    async function loadPools() {
-      setLoadingPools(true)
-      setPoolsError(null)
-      try {
-        let accounts: Array<any> = []
-        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-        const maxAttempts = 5
-        let attempt = 0
-        let lastErr: any = null
-
-        // Fetch AMM Configs dynamically to map correct Fee Tiers
-        let fetchedConfigs: any[] = []
-
-        while (attempt < maxAttempts) {
-          attempt++
-          try {
-            if (program) {
-              const [allPoolsRes, allConfigsRes] = await Promise.all([
-                (program.account as any).poolState.all(),
-                (program.account as any).ammConfig.all()
-              ])
-              accounts = allPoolsRes.map((a: any) => ({ pubkey: a.publicKey, account: a.account }))
-              fetchedConfigs = allConfigsRes.map((c: any) => ({
-                ...c.account,
-                publicKey: c.publicKey,
-              }))
-            } else {
-              const raw = await connection.getProgramAccounts(PROGRAM_ID)
-              const coder = new anchor.BorshAccountsCoder(idlJson as any)
-              accounts = []
-              for (const r of raw) {
-                try {
-                  const data = r.account.data as any
-                  let buf: Buffer
-
-                  if (Buffer.isBuffer(data)) {
-                    buf = data
-                  } else if (data instanceof Uint8Array) {
-                    buf = Buffer.from(data)
-                  } else if (typeof data === 'string') {
-                    buf = Buffer.from(data, 'base64')
-                  } else if (Array.isArray(data) && data.length > 0) {
-                    buf = Buffer.from(data[0], 'base64')
-                  } else {
-                    continue
-                  }
-
-                  // Try to decode as PoolState
-                  let decodedPool: any = null
-                  try { decodedPool = coder.decode('PoolState', buf) } catch (e) { }
-                  if (!decodedPool) try { decodedPool = coder.decode('poolState', buf) } catch (e) { }
-                  if (!decodedPool) try { decodedPool = coder.decode('pool_state', buf) } catch (e) { }
-
-                  if (decodedPool) {
-                    accounts.push({ pubkey: r.pubkey, account: decodedPool })
-                    continue
-                  }
-
-                  // Try to decode as AmmConfig
-                  let decodedConfig: any = null
-                  try { decodedConfig = coder.decode('AmmConfig', buf) } catch (e) { }
-                  if (!decodedConfig) try { decodedConfig = coder.decode('ammConfig', buf) } catch (e) { }
-                  if (!decodedConfig) try { decodedConfig = coder.decode('amm_config', buf) } catch (e) { }
-
-                  if (decodedConfig) {
-                    fetchedConfigs.push({
-                      ...decodedConfig,
-                      publicKey: r.pubkey,
-                    })
-                  }
-                } catch (err) {
-                  // skip decoding errors
-                }
-              }
-            }
-            if (mounted) {
-              setAmmConfigs(fetchedConfigs)
-            }
-            lastErr = null
-            break
-          } catch (err: any) {
-            lastErr = err
-            const msg = (err?.message || String(err) || '').toLowerCase()
-            if (msg.includes('429') || msg.includes('too many requests')) {
-              // Log a single clean warning notification once instead of spamming full stack traces
-              if (attempt === 1) {
-                console.warn('Solana Devnet RPC Rate Limit hit (HTTP 429). Retrying requests in background with backoff...')
-              }
-              const backoff = Math.min(500 * Math.pow(2, attempt - 1), 4000) + Math.round(Math.random() * 200)
-              await sleep(backoff)
-              continue
-            }
-            console.warn(`Error loading pools on attempt ${attempt}: ${err?.message || err}`)
-            break
-          }
-        }
-        if (lastErr) throw lastErr
-
-        const mapped: any[] = []
-        const vaultPubkeys: string[] = []
-
-        const toPubString = (v: any) => {
-          if (!v) return null
-          if (typeof v === 'string') return v
-          if (v?.toBase58) return v.toBase58()
-          try { return String(v) } catch { return null }
-        }
-
-        for (const a of accounts) {
-          try {
-            const acc = a.account
-            const poolPubkey = a.pubkey ? (a.pubkey.toBase58 ? a.pubkey.toBase58() : String(a.pubkey)) : null
-            const token0Vault = toPubString(acc.token_0_vault ?? acc.token0Vault ?? acc.token0_vault)
-            const token1Vault = toPubString(acc.token_1_vault ?? acc.token1Vault ?? acc.token1_vault)
-            const mint0 = toPubString(acc.token_0_mint ?? acc.token0Mint ?? acc.mint_0 ?? acc.mint0 ?? acc.mint_0_mint ?? acc.mint_0_pubkey)
-            const mint1 = toPubString(acc.token_1_mint ?? acc.token1Mint ?? acc.mint_1 ?? acc.mint1 ?? acc.mint_1_mint ?? acc.mint_1_pubkey)
-            const ammConfig = toPubString(acc.amm_config ?? acc.ammConfig ?? acc.amm)
-
-            if (token0Vault) vaultPubkeys.push(token0Vault)
-            if (token1Vault) vaultPubkeys.push(token1Vault)
-
-            mapped.push({
-              poolPda: poolPubkey,
-              name: acc.name ?? (mint0 ? String(mint0).slice(0, 6) : 'Pool'),
-              fee: acc.fee ?? '-',
-              ammConfig,
-              token0: mint0 ?? null,
-              token1: mint1 ?? null,
-              token0Vault,
-              token1Vault,
-              vault0Balance: null,
-              vault1Balance: null,
-              lpSupply: acc.lpSupply ?? acc.lp_supply ?? undefined,
-              raw: acc,
-            })
-          } catch (err) {
-            // ignore per-account errors
-          }
-        }
-
-        const uniqueVaults = Array.from(new Set(vaultPubkeys))
-        const fetchBalancesBatched = async (pubs: string[], concurrency = 2) => {
-          const results = new Map<string, number | null>()
-          const queue = pubs.slice()
-          const worker = async () => {
-            while (queue.length) {
-              const p = queue.shift()!
-              await new Promise((r) => setTimeout(r, 120 + Math.round(Math.random() * 80)))
-              let attempts = 0
-              while (attempts < 8) {
-                try {
-                  const b = await connection.getTokenAccountBalance(new PublicKey(p))
-                  results.set(p, b?.value?.uiAmount ?? null)
-                  break
-                } catch (err: any) {
-                  attempts++
-                  const is429 = String(err?.message || '').toLowerCase().includes('429') || String(err?.message || '').toLowerCase().includes('too many requests')
-                  const base = is429 ? 1000 : 300
-                  const wait = Math.min(base * Math.pow(2, attempts), 6000) + Math.round(Math.random() * 300)
-                  await new Promise((r) => setTimeout(r, wait))
-                  if (attempts >= 8) results.set(p, null)
-                }
-              }
-            }
-          }
-          await Promise.all(Array.from({ length: Math.min(concurrency, pubs.length) }, () => worker()))
-          return results
-        }
-
-        const balances = await fetchBalancesBatched(uniqueVaults, 5)
-        for (const m of mapped) {
-          if (m.token0Vault) m.vault0Balance = balances.get(m.token0Vault) ?? null
-          if (m.token1Vault) m.vault1Balance = balances.get(m.token1Vault) ?? null
-        }
-
-        if (mounted) setPools(mapped)
-      } catch (err: any) {
-        if (mounted) setPoolsError(err?.message || String(err))
-      } finally {
-        if (mounted) setLoadingPools(false)
-      }
-    }
-    loadPools()
-
-    let subId: number | null = null
-    try {
-      subId = connection.onProgramAccountChange(PROGRAM_ID, async () => {
-        if (mounted) await loadPools()
-      })
-    } catch (e) { }
-
-    return () => {
-      mounted = false
-      if (subId != null) connection.removeProgramAccountChangeListener(subId)
-    }
-  }, [program, connection])
+  const pools = useMemo(() => data?.pools ?? [], [data])
+  const ammConfigs = useMemo(() => data?.ammConfigs ?? [], [data])
+  const poolsError = useMemo(() => {
+    if (!error) return null
+    const raw = (error as any).error ?? (error as any).data ?? error
+    return typeof raw === 'string' ? raw : JSON.stringify(raw)
+  }, [error])
 
   // Improved case-insensitive, partial match filtering for pool name (display symbol pair) and pool id PDA
   const filteredPools = pools.filter((p) => {
@@ -515,7 +318,7 @@ const Liquidity = () => {
               <tr><td colSpan={4}>No pools found matching search filter.</td></tr>
             ) : (
               filteredPools.map((p, idx) => (
-                <PoolRow key={p.poolPda ?? p.token0 ?? idx} pool={p} navigate={navigate} ammConfigs={ammConfigs} />
+                <MemoPoolRow key={p.poolPda ?? p.token0 ?? idx} pool={p} navigate={navigate} ammConfigs={ammConfigs} />
               ))
             )}
           </tbody>

@@ -12,7 +12,6 @@ import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountIdempotentInstruction,
 } from '@solana/spl-token'
 import {
   getAuthAddress,
@@ -29,6 +28,7 @@ import {
   searchTokenRegistry,
   type TokenRegistryEntry,
 } from '../../utils/tokenRegistry'
+import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 
 const CREATE_POOL_FEE_RECEIVER = new PublicKey('63EqUEuqiLw9ZvJJsFECg5fN7bM9hBifUEYJFGhJtuCa')
 
@@ -60,6 +60,7 @@ export default function InitializeForm() {
   const program = useProgram()
   const { connection } = useConnection()
   const wallet = useWallet()
+  const { detectTokenProgram, buildEnsureAtaInstruction } = useTokenProgramAta()
 
   const state = (location.state as { mode?: 'permissioned' | 'standard' }) || {}
   const isPermissionedMode = state.mode === 'permissioned'
@@ -195,14 +196,6 @@ export default function InitializeForm() {
   const baseIsA = true
   const TEST_MODE = false
 
-  async function detectTokenProgram(mint: PublicKey) {
-    const info = await connection.getAccountInfo(mint)
-    if (!info) throw new Error('Mint not found: ' + mint.toBase58())
-    if (info.owner.equals(TOKEN_PROGRAM_ID)) return TOKEN_PROGRAM_ID
-    if (info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID
-    return TOKEN_PROGRAM_ID
-  }
-
   async function showSendErrorDetails(err: any, hintAddress?: PublicKey) {
     const errorMessage = (err?.message || String(err) || '').toString()
     console.error('[InitializeForm] initialize failed', {
@@ -274,6 +267,25 @@ export default function InitializeForm() {
   useEffect(() => {
     setTokenRegistry(getTokenRegistry())
   }, [])
+
+  async function getMintWithProgramFallback(mint: PublicKey) {
+    const preferredProgram = await detectTokenProgram(mint)
+    const programsToTry = preferredProgram.equals(TOKEN_PROGRAM_ID)
+      ? [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]
+      : [TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID]
+
+    let lastError: any = null
+    for (const tokenProgram of programsToTry) {
+      try {
+        const mintInfo = await getMint(connection, mint, 'confirmed', tokenProgram)
+        return { mintInfo, tokenProgram }
+      } catch (error: any) {
+        lastError = error
+      }
+    }
+
+    throw lastError || new Error(`Unable to read mint info for ${mint.toBase58()}`)
+  }
 
   useEffect(() => {
     const fetchConfigs = async () => {
@@ -368,29 +380,6 @@ export default function InitializeForm() {
     }
   }
 
-  async function ensureAssociatedTokenAccount(owner: PublicKey, mint: PublicKey, tokenProgram: PublicKey) {
-    const ata = getAssociatedTokenAddressSync(mint, owner, false, tokenProgram)
-    const existing = await connection.getAccountInfo(ata)
-    if (existing) return ata
-
-    const tx = new anchor.web3.Transaction().add(
-      createAssociatedTokenAccountIdempotentInstruction(
-        wallet.publicKey!,
-        ata,
-        owner,
-        mint,
-        tokenProgram,
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-      ),
-    )
-    tx.feePayer = wallet.publicKey!
-    const latest = await connection.getLatestBlockhash()
-    tx.recentBlockhash = latest.blockhash
-    await wallet.sendTransaction(tx, connection)
-    return ata
-  }
-
-
   async function handleInitialize() {
     if (!program) return setStatus('Program not ready')
     if (!wallet.publicKey) return setStatus('Connect wallet')
@@ -419,14 +408,30 @@ export default function InitializeForm() {
       const token1Program = await detectTokenProgram(token1Mint)
 
       const [poolState] = await getPoolAddress(amm, token0Mint, token1Mint, programId)
+
+      // Pre-flight: check if pool already exists on-chain.
+      // Without this, the on-chain initialize instruction tries to Allocate the pool
+      // state PDA via System Program and fails with "account already in use" /
+      // custom error 0x0 — an opaque error with no user-friendly message.
+      const existingPoolAccount = await connection.getAccountInfo(poolState).catch(() => null)
+      if (existingPoolAccount) {
+        setStatus(
+          `Pool already exists (${poolState.toBase58().slice(0, 8)}…). ` +
+          'Use the Deposit page to add liquidity to this pool.'
+        )
+        setBusy(false)
+        return
+      }
+
       const [lpMint] = await getPoolLpMintAddress(poolState, programId)
-      const lpTokenProgram = await detectTokenProgram(lpMint).catch(() => TOKEN_PROGRAM_ID)
       const [token0Vault] = await getPoolVaultAddress(poolState, token0Mint, programId)
       const [token1Vault] = await getPoolVaultAddress(poolState, token1Mint, programId)
       const [observationState] = await getOrcleAccountAddress(poolState, programId)
 
-      const mint0Info = await getMint(connection, mA, 'confirmed', token0Program)
-      const mint1Info = await getMint(connection, mB, 'confirmed', token1Program)
+      const mint0Resolved = await getMintWithProgramFallback(mA)
+      const mint1Resolved = await getMintWithProgramFallback(mB)
+      const mint0Info = mint0Resolved.mintInfo
+      const mint1Info = mint1Resolved.mintInfo
 
       const amountForMintA_units = parseHumanAmountToBigInt((baseIsA ? baseAmount : quoteAmount) || '0', mint0Info.decimals)
       const amountForMintB_units = parseHumanAmountToBigInt((baseIsA ? quoteAmount : baseAmount) || '0', mint1Info.decimals)
@@ -446,8 +451,31 @@ export default function InitializeForm() {
 
       const [permissionPda] = await getPermissionPdaAddress(creator, programId)
 
-      await ensureAssociatedTokenAccount(creator, token0Mint, token0Program)
-      await ensureAssociatedTokenAccount(creator, token1Mint, token1Program)
+      // Derive creator ATAs using the SORTED token0Mint/token1Mint with their correctly-detected
+      // programs. This is critical for Token-2022 mints: token0AtaCtx must use token0Program
+      // (which belongs to the sorted token0Mint), NOT the program resolved from the user-input
+      // mA (which may be token1Mint after sorting). Uses the same buildEnsureAtaInstruction
+      // pattern as WithdrawForm and DepositForm.
+      const creatorToken0AtaCtx = await buildEnsureAtaInstruction({
+        payer: creator,
+        owner: creator,
+        mint: token0Mint,
+        tokenProgram: token0Program,
+      })
+      const creatorToken1AtaCtx = await buildEnsureAtaInstruction({
+        payer: creator,
+        owner: creator,
+        mint: token1Mint,
+        tokenProgram: token1Program,
+      })
+      const creatorToken0Ata = creatorToken0AtaCtx.ata
+      const creatorToken1Ata = creatorToken1AtaCtx.ata
+      const creatorLpAta = getAssociatedTokenAddressSync(lpMint, creator, false, TOKEN_PROGRAM_ID)
+
+      const ataPreInstructions = [
+        ...(creatorToken0AtaCtx.instruction ? [creatorToken0AtaCtx.instruction] : []),
+        ...(creatorToken1AtaCtx.instruction ? [creatorToken1AtaCtx.instruction] : []),
+      ]
 
       const accounts: any = {
         ammConfig: amm,
@@ -471,15 +499,15 @@ export default function InitializeForm() {
       if (isPermissionedMode) {
         accounts.payer = creator
         accounts.creator = creator
-        accounts.payerToken0 = getAssociatedTokenAddressSync(token0Mint, creator, false, token0Program)
-        accounts.payerToken1 = getAssociatedTokenAddressSync(token1Mint, creator, false, token1Program)
-        accounts.payerLpToken = getAssociatedTokenAddressSync(lpMint, creator, false, lpTokenProgram)
+        accounts.payerToken0 = creatorToken0Ata
+        accounts.payerToken1 = creatorToken1Ata
+        accounts.payerLpToken = creatorLpAta
         accounts.permission = permissionPda
       } else {
         accounts.creator = creator
-        accounts.creatorToken0 = getAssociatedTokenAddressSync(token0Mint, creator, false, token0Program)
-        accounts.creatorToken1 = getAssociatedTokenAddressSync(token1Mint, creator, false, token1Program)
-        accounts.creatorLpToken = getAssociatedTokenAddressSync(lpMint, creator, false, lpTokenProgram)
+        accounts.creatorToken0 = creatorToken0Ata
+        accounts.creatorToken1 = creatorToken1Ata
+        accounts.creatorLpToken = creatorLpAta
       }
 
       if (TEST_MODE) {
@@ -501,11 +529,12 @@ export default function InitializeForm() {
             baseInitAmount1,
             openTimeBn,
             { [creatorFeeOn === '0' ? 'bothToken' : creatorFeeOn === '1' ? 'onlyToken0' : 'onlyToken1']: {} }
-          ).accounts(accounts)
+          ).accounts(accounts).preInstructions(ataPreInstructions)
         } else {
-          initBuilder = (program as any).methods.initialize(baseInitAmount0, baseInitAmount1, openTimeBn).accounts(accounts)
+          initBuilder = (program as any).methods.initialize(baseInitAmount0, baseInitAmount1, openTimeBn).accounts(accounts).preInstructions(ataPreInstructions)
         }
 
+        setStatus('Sending transaction...')
         const tx = await initBuilder.transaction()
         tx.feePayer = wallet.publicKey
         const latest = await connection.getLatestBlockhash()
@@ -527,6 +556,7 @@ export default function InitializeForm() {
         setBusy(false)
         return
       } else {
+        setStatus('Sending transaction...')
         let sig: string
         if (isPermissionedMode && isWhitelisted) {
           sig = await (program as any).methods.initializeWithPermission(
@@ -534,9 +564,9 @@ export default function InitializeForm() {
             baseInitAmount1,
             openTimeBn,
             { [creatorFeeOn === '0' ? 'bothToken' : creatorFeeOn === '1' ? 'onlyToken0' : 'onlyToken1']: {} }
-          ).accounts(accounts).rpc()
+          ).accounts(accounts).preInstructions(ataPreInstructions).rpc()
         } else {
-          sig = await (program as any).methods.initialize(baseInitAmount0, baseInitAmount1, openTimeBn).accounts(accounts).rpc()
+          sig = await (program as any).methods.initialize(baseInitAmount0, baseInitAmount1, openTimeBn).accounts(accounts).preInstructions(ataPreInstructions).rpc()
         }
         setTxResult({ sig, explorer: 'https://explorer.solana.com/tx/' + sig + '?cluster=devnet' })
         logActivity({
@@ -552,6 +582,11 @@ export default function InitializeForm() {
         return
       }
     } catch (err: any) {
+      logActivity({
+        actionType: 'Pool Creation',
+        tokenPair: `${tokenA?.symbol || 'Unknown'}/${tokenB?.symbol || 'Unknown'}`,
+        status: 'failed',
+      })
       await showSendErrorDetails(err, wallet.publicKey ?? undefined)
       setBusy(false)
     }
@@ -647,10 +682,11 @@ export default function InitializeForm() {
                       title={errorDetails ? 'Transaction Failed' : 'Status'}
                       message={status}
                       details={errorDetails}
-                      onClose={() => {
+                      // No onClose while status is 'info' — card stays until tx settles
+                      onClose={errorDetails ? () => {
                         setStatus(null)
                         setErrorDetails(null)
-                      }}
+                      } : undefined}
                     />
                   )}
 
