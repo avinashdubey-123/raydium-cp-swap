@@ -77,7 +77,6 @@ const toPublicKey = (value?: string | PublicKey | null) => {
 
 function WithdrawFormContent({ state, onClose, embedded = false }: { state: WithdrawState; onClose: () => void; embedded?: boolean }) {
     const [percent, setPercent] = useState(100)
-    const [keepPositionOpen, setKeepPositionOpen] = useState(false)
     const [quote, setQuote] = useState<WithdrawQuote | null>(null)
     const [quoteLoading, setQuoteLoading] = useState(false)
     const [busy, setBusy] = useState(false)
@@ -286,7 +285,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const ownerLpAcct = await getAccount(connection, ownerLpToken, 'confirmed', lpTokenProgram)
                 const ownerLpBalance = new BN(ownerLpAcct.amount.toString())
 
-                const effectivePercent = keepPositionOpen && percent >= 100 ? 99.5 : percent
+                const effectivePercent = percent >= 100 ? 99.5 : percent
                 const percentBps = Math.round(effectivePercent * 100)
                 const lpInput = ownerLpBalance.mul(new BN(percentBps)).add(new BN(9999)).div(new BN(10000))
 
@@ -348,7 +347,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
 
         loadQuote()
         return () => { cancelled = true }
-    }, [program, wallet.publicKey, connection, state.poolPda, percent, keepPositionOpen, token0Symbol, token1Symbol])
+    }, [program, wallet.publicKey, connection, state.poolPda, percent, token0Symbol, token1Symbol])
 
     return (
         <div className={embedded ? 'withdraw-page withdraw-page--embedded' : 'withdraw-page'}>
