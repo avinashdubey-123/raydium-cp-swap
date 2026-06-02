@@ -23,6 +23,15 @@ function getTokenColor(symbol: string): string {
   return `hsl(${hue}, 65%, 40%)`
 }
 
+function toFiniteNumber(value: any): number | null {
+  const raw = typeof value === 'number'
+    ? value
+    : value?.toNumber
+      ? value.toNumber()
+      : Number(value?.toString?.() ?? value)
+  return Number.isFinite(raw) ? raw : null
+}
+
 function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; ammConfigs: any[] }) {
   const token0 = pool.token0 ? new PublicKey(pool.token0) : undefined
   const token1 = pool.token1 ? new PublicKey(pool.token1) : undefined
@@ -106,8 +115,9 @@ function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; amm
     if (!config) {
       return pool.fee ? (String(pool.fee).includes('%') ? pool.fee : `${pool.fee}%`) : '-'
     }
-    const feeRate = config.tradeFeeRate ?? config.trade_fee_rate ?? 0
-    return `${(Number(feeRate) / 10000).toFixed(2)}%`
+    const feeRate = config.tradeFeeRate ?? config.trade_fee_rate
+    const feeRateNum = toFiniteNumber(feeRate)
+    return feeRateNum == null ? '-' : `${(feeRateNum / 10000).toFixed(2)}%`
   }
   const feeDisplay = getFeeTier()
 
