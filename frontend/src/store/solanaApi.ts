@@ -82,7 +82,8 @@ function toSerializableValue(v: unknown): unknown {
   if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return v
   if (typeof v === 'bigint') return v.toString()
   if (typeof v === 'object' && 'toBase58' in v && typeof v.toBase58 === 'function') return v.toBase58()
-  if (typeof v === 'object' && ('_isBN' in v || v.constructor?.name === 'BN') && 'toString' in v && typeof v.toString === 'function') return v.toString()
+  // Use anchor.BN.isBN or check for specific BN methods instead of relying on constructor.name which breaks when minified
+  if (typeof v === 'object' && (anchor.BN?.isBN?.(v) || ('toArray' in v && 'toNumber' in v) || ('_isBN' in v)) && 'toString' in v && typeof v.toString === 'function') return v.toString()
   if (Array.isArray(v)) return v.map(toSerializableValue)
   if (Buffer.isBuffer(v) || v instanceof Uint8Array) return Array.from(v)
   if (typeof v === 'object') {
