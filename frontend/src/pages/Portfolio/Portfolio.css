@@ -1,9 +1,8 @@
 /* Modern DeFi Portfolio Theme styling - Refined version */
 
 .portfolio-wrapper {
-  max-width: 900px;
   margin: 0 auto;
-  padding: 100px 24px 60px;
+  padding: 112px 40px;
   min-height: 100vh;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #eff3f8;
@@ -12,13 +11,14 @@
 /* Header Section */
 .portfolio-header-section {
   margin-bottom: 36px;
+  text-align: left;
 }
 
 .portfolio-title-new {
   font-size: 34px;
-  font-weight: 800;
+  font-weight: 700;
   margin: 0 0 8px 0;
-  background: linear-gradient(135deg, #4ef2d2 0%, #1f85fa 50%, #b23eff 100%);
+  background: linear-gradient(90deg, #39d0d8 0%, #2b6cb0 5%, rgb(247, 0, 255) 15%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -66,7 +66,7 @@
 }
 
 .portfolio-tab-btn.active {
-  color: #38bdf8;
+  color: #39d0d8;
   background: rgba(56, 189, 248, 0.08);
 }
 
@@ -77,33 +77,26 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #38bdf8;
+  background: #39d0d8;
   border-radius: 2px 2px 0 0;
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 8px rgba(54, 210, 238, 0.6);
 }
 
 /* Collect creator fees button styling */
 .collect-fees-btn {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: #ffffff;
-  border: none;
-  padding: 8px 16px;
+  background: rgba(22, 28, 45, 0.5);
+  color: #39d0d8;
+  border: 1px solid #39d0d8;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
 }
 
 .collect-fees-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-}
-
-.collect-fees-btn:active {
-  transform: translateY(0);
+  filter: brightness(0.8);
 }
 
 /* Invested Assets Tab content - Horizontal Row Cards */
@@ -411,13 +404,13 @@
 }
 
 .liquidity-action-btn-v2.deposit-btn {
-  background: #38bdf8;
-  color: #0f172a;
+  background: rgba(22, 28, 45, 0.5);
+  color: #39d0d8;
+  border: 1px solid #39d0d8;
 }
 
 .liquidity-action-btn-v2.deposit-btn:hover {
-  background: #0ea5e9;
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+  filter: brightness(0.8);
 }
 
 .liquidity-action-btn-v2.withdraw-btn {
@@ -427,8 +420,7 @@
 }
 
 .liquidity-action-btn-v2.withdraw-btn:hover {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.5);
+  filter: brightness(0.8);
 }
 
 .view-details-toggle-btn {
@@ -694,7 +686,9 @@
 }
 
 @keyframes spinner-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .error-state {
@@ -714,63 +708,57 @@
   .portfolio-wrapper {
     padding-top: 80px;
   }
-  
+
   .portfolio-navigation-panel {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-  
-  .collect-fees-btn {
-    width: 100%;
-    text-align: center;
-  }
-  
   .asset-row-card {
     flex-direction: column;
     align-items: flex-start;
     gap: 14px;
   }
-  
+
   .asset-row-pool-count-btn {
     align-self: flex-end;
   }
-  
+
   .liquidity-card-header-v2 {
     flex-direction: column;
     align-items: flex-start;
     gap: 14px;
   }
-  
+
   .liquidity-card-composition {
     width: 100%;
     justify-content: space-between;
   }
-  
+
   .liquidity-card-actions-v2 {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .card-buttons-left {
     width: 100%;
   }
-  
+
   .card-buttons-left .liquidity-action-btn-v2 {
     flex: 1;
     text-align: center;
   }
-  
+
   .view-details-toggle-btn {
     align-self: flex-end;
   }
-  
+
   .activity-timeline-card {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .activity-status-col {
     align-items: flex-start;
     min-width: unset;

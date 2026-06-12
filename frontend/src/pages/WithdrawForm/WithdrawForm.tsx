@@ -21,6 +21,7 @@ import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 import { useDispatch } from 'react-redux'
 import { refreshAfterPoolTx } from '../../store/solanaApi'
 import { invalidatePortfolioCache } from '../Portfolio/Portfolio'
+import { useGetPoolStateQuery } from '../../store/solanaApi'
 import './WithdrawForm.css'
 
 export type WithdrawState = {
@@ -101,6 +102,11 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
     const token0Symbol = state.token0Symbol || 'TOKEN0'
     const token1Symbol = state.token1Symbol || 'TOKEN1'
 
+    const { data: poolStateData, isLoading: fetchingState } = useGetPoolStateQuery(state.poolPda ?? '', {
+        skip: !state.poolPda
+    })
+    const poolStateAcct = poolStateData?.state
+
     const outputToken0 = useMemo(() => {
         if (!quote) return 0
         return Number(quote.token0Ui || 0)
@@ -136,7 +142,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
 
         try {
             const programId = (program as any).programId as PublicKey
-            const poolStateAcct: any = await (program.account as any).poolState.fetch(poolPda)
+            if (!poolStateAcct) throw new Error('Pool state not loaded')
             const token0Mint = new PublicKey(poolStateAcct.token0Mint)
             const token1Mint = new PublicKey(poolStateAcct.token1Mint)
 
@@ -238,13 +244,12 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
         const loadQuote = async () => {
             if (!program || !wallet.publicKey) return
             const poolPda = toPublicKey(state.poolPda)
-            if (!poolPda) return
+            if (!poolPda || !poolStateAcct) return
 
             setQuoteLoading(true)
 
             try {
                 const programId = (program as any).programId as PublicKey
-                const poolStateAcct: any = await (program.account as any).poolState.fetch(poolPda)
                 const token0Mint = new PublicKey(poolStateAcct.token0Mint)
                 const token1Mint = new PublicKey(poolStateAcct.token1Mint)
 
@@ -347,7 +352,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
 
         loadQuote()
         return () => { cancelled = true }
-    }, [program, wallet.publicKey, connection, state.poolPda, percent, token0Symbol, token1Symbol])
+    }, [program, wallet.publicKey, connection, state.poolPda, percent, token0Symbol, token1Symbol, poolStateAcct])
 
     return (
         <div className={embedded ? 'withdraw-page withdraw-page--embedded' : 'withdraw-page'}>
@@ -427,7 +432,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                         onClose={txState.status !== 'info' ? () => setTxState(null) : undefined}
                     />
                 )}
-                <button className="withdraw-confirm" onClick={onConfirmWithdraw} disabled={busy || quoteLoading}>Confirm</button>
+                <button className="withdraw-confirm" onClick={onConfirmWithdraw} disabled={busy || quoteLoading || fetchingState || !poolStateAcct}>Confirm</button>
             </div>
         </div>
     )

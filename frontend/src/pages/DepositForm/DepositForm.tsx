@@ -178,9 +178,9 @@ export default function DepositForm() {
           const info = await connection.getAccountInfo(configPubkey)
           if (info) {
             const coder = new anchor.BorshAccountsCoder(idlJson as any)
-            try { configAcct = coder.decode('AmmConfig', info.data) } catch (e) {}
-            if (!configAcct) try { configAcct = coder.decode('ammConfig', info.data) } catch (e) {}
-            if (!configAcct) try { configAcct = coder.decode('amm_config', info.data) } catch (e) {}
+            try { configAcct = coder.decode('AmmConfig', info.data) } catch (e) { }
+            if (!configAcct) try { configAcct = coder.decode('ammConfig', info.data) } catch (e) { }
+            if (!configAcct) try { configAcct = coder.decode('amm_config', info.data) } catch (e) { }
           }
         }
 
@@ -270,13 +270,13 @@ export default function DepositForm() {
           try {
             const mInfo = await callWithRetry(() => getMint(connection, mint0, 'confirmed', tokenProgram0))
             dec0 = mInfo.decimals
-          } catch (e) {}
+          } catch (e) { }
         }
         if (dec1 === 0 && !isSol1) {
           try {
             const mInfo = await callWithRetry(() => getMint(connection, mint1, 'confirmed', tokenProgram1))
             dec1 = mInfo.decimals
-          } catch (e) {}
+          } catch (e) { }
         }
 
         let bal0 = '0'
@@ -407,7 +407,8 @@ export default function DepositForm() {
     const lpMintAcct = await getMint(connectionRef, lpMint, 'confirmed', lpTokenProgram)
     const vault0Acct = await getAccount(connectionRef, token0Vault, 'confirmed', token0Program)
     const vault1Acct = await getAccount(connectionRef, token1Vault, 'confirmed', token1Program)
-    const poolStateAcct: any = await (program.account as any).poolState.fetch(poolAddr)
+    const poolStateAcct: any = poolState
+    if (!poolStateAcct) throw new Error('Pool state not loaded yet')
 
     const poolVault0Amount = new BN(vault0Acct.amount.toString())
     const poolVault1Amount = new BN(vault1Acct.amount.toString())
@@ -568,7 +569,8 @@ export default function DepositForm() {
       const vault0Acct = await getAccount(connectionRef, token0Vault, 'confirmed', token0Program)
       const vault1Acct = await getAccount(connectionRef, token1Vault, 'confirmed', token1Program)
 
-      const poolStateAcct: any = await (program.account as any).poolState.fetch(poolAddr)
+      const poolStateAcct: any = poolState
+      if (!poolStateAcct) throw new Error('Pool state not loaded yet')
 
       const poolVault0Amount = new BN(vault0Acct.amount.toString())
       const poolVault1Amount = new BN(vault1Acct.amount.toString())
@@ -933,7 +935,7 @@ export default function DepositForm() {
                                     const nextQuote = await quoteFromToken0(valStr)
                                     setQuote(nextQuote)
                                     setAmountB(nextQuote.token1PostHuman)
-                                  } catch (e) {}
+                                  } catch (e) { }
                                 } else {
                                   setAmountB('')
                                 }
@@ -955,7 +957,7 @@ export default function DepositForm() {
                                     const nextQuote = await quoteFromToken0(valStr)
                                     setQuote(nextQuote)
                                     setAmountB(nextQuote.token1PostHuman)
-                                  } catch (e) {}
+                                  } catch (e) { }
                                 } else {
                                   setAmountB('')
                                 }
@@ -1029,7 +1031,7 @@ export default function DepositForm() {
                                     const nextQuote = await quoteFromToken1(valStr)
                                     setQuote(nextQuote)
                                     setAmountA(nextQuote.token0PostHuman)
-                                  } catch (e) {}
+                                  } catch (e) { }
                                 } else {
                                   setAmountA('')
                                 }
@@ -1051,7 +1053,7 @@ export default function DepositForm() {
                                     const nextQuote = await quoteFromToken1(valStr)
                                     setQuote(nextQuote)
                                     setAmountA(nextQuote.token0PostHuman)
-                                  } catch (e) {}
+                                  } catch (e) { }
                                 } else {
                                   setAmountA('')
                                 }

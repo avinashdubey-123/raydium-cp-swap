@@ -328,7 +328,44 @@ export const solanaApi = createApi({
       // NO onCacheEntryAdded websocket listener – refetches are now
       // driven exclusively by transactions via the helper functions above.
     }),
+    getPoolState: builder.query<any, string>({
+      queryFn: async (poolPda) => {
+        try {
+          const coder = new anchor.BorshAccountsCoder(idlJson as any)
+          const connection = getConnection()
+          const info = await connection.getAccountInfo(new PublicKey(poolPda))
+          if (!info) throw new Error('Pool state account not found')
+          
+          let decodedPool: any = null
+          try { decodedPool = coder.decode('PoolState', info.data) } catch {}
+          if (!decodedPool) { try { decodedPool = coder.decode('poolState', info.data) } catch {} }
+          if (!decodedPool) { try { decodedPool = coder.decode('pool_state', info.data) } catch {} }
+          
+          if (!decodedPool) throw new Error('Failed to decode pool state')
+
+          const vault0Key = decodedPool.token0Vault || decodedPool.token_0_vault || decodedPool.vault0
+          const vault1Key = decodedPool.token1Vault || decodedPool.token_1_vault || decodedPool.vault1
+
+          let vault0Balance: number | null = null
+          let vault1Balance: number | null = null
+
+          if (vault0Key) vault0Balance = await getTokenBalance(connection, toPubString(vault0Key))
+          if (vault1Key) vault1Balance = await getTokenBalance(connection, toPubString(vault1Key))
+
+          return { data: { state: decodedPool, vault0Balance, vault1Balance } }
+        } catch (error) {
+          return {
+            error: {
+              status: 'CUSTOM_ERROR',
+              error: error instanceof Error ? error.message : String(error),
+            },
+          }
+        }
+      },
+      providesTags: (_result, _error, poolPda) => [{ type: 'Pools', id: poolPda }],
+      keepUnusedDataFor: 60, // Cache for 60 seconds
+    }),
   }),
 })
 
-export const { useGetPoolsQuery } = solanaApi
+export const { useGetPoolsQuery, useGetPoolStateQuery } = solanaApi

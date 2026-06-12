@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
@@ -13,6 +13,7 @@ import TransactionCard from '../../components/TransactionCard/TransactionCard'
 import useTokenProgramAta from '../../hooks/useTokenProgramAta'
 import '../WithdrawForm/WithdrawForm.css'
 import { getPoolDisplayName } from '../../utils/token'
+import { useGetPoolStateQuery } from '../../store/solanaApi'
 
 const toPublicKey = (value?: string | any | null) => {
     if (!value) return null
@@ -57,8 +58,6 @@ export default function CollectFees() {
     const state = location.state as { pool: any; type: 'protocol' | 'fund'; fromTab?: string }
     const [percent, setPercent] = useState(100)
     const [busy, setBusy] = useState(false)
-    const [fetching, setFetching] = useState(false)
-    const [localPool, setLocalPool] = useState<any>(null)
     const [txState, setTxState] = useState<{
         status: 'success' | 'error' | 'info'
         title: string
@@ -70,31 +69,11 @@ export default function CollectFees() {
     const poolPda = toPublicKey(state?.pool?.publicKey || state?.pool?.poolPda)
     const type = state?.type || 'protocol'
 
-    const fetchPool = useCallback(async (isRetry = false) => {
-        if (!program || !poolPda) return
-        
-        if (!isRetry) setFetching(true)
-        try {
-            if (!isRetry) await new Promise(r => setTimeout(r, 400))
-            
-            const data = await (program.account as any).poolState.fetch(poolPda)
-            setLocalPool(data)
-            if (txState?.status === 'error' && txState.title === 'Fetch Failed') {
-                setTxState(null)
-            }
-        } catch (err: any) {
-            console.error('Fetch pool error:', err)
-            if (err.message?.includes('429')) {
-                setTimeout(() => fetchPool(true), 2000)
-            }
-        } finally {
-            if (!isRetry) setFetching(false)
-        }
-    }, [program, poolPda?.toBase58()])
+    const { data: poolStateData, isLoading: fetching, refetch: fetchPool } = useGetPoolStateQuery(poolPda?.toBase58() ?? '', {
+        skip: !poolPda
+    })
 
-    useEffect(() => {
-        fetchPool()
-    }, [fetchPool])
+    const localPool = poolStateData?.state || null
 
     if (!state || !state.pool || !poolPda) {
         return (

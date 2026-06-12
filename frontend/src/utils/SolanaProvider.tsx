@@ -31,7 +31,6 @@ export const SolanaProvider: FC<SolanaProviderProps> = ({ children }) => {
     try {
       ;(window as any).__SOLANA_ENDPOINT = endpoint
       if (lastLoggedEndpoint !== endpoint) {
-        console.log('Resolved Solana endpoint ->', endpoint)
         lastLoggedEndpoint = endpoint
       }
     } catch (e) {

@@ -11,8 +11,7 @@
 }
 
 .admin-page {
-  padding: 112px 18px 80px;
-  max-width: 1200px;
+  padding: 112px 40px;
   margin: 0 auto;
   min-height: 100vh;
   color: var(--admin-text);

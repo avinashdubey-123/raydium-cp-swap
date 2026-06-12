@@ -105,7 +105,7 @@ export default function Swap() {
       return
     }
     if (selectedPool || allPools.length === 0) return
-    
+
     if (routeMatchedPool) {
       setSelectedPool(routeMatchedPool)
       return
@@ -319,9 +319,9 @@ export default function Swap() {
         accountsInfo.forEach((info, idx) => {
           if (info) {
             let decoded: any = null
-            try { decoded = coder.decode('AmmConfig', info.data) } catch (e) {}
-            if (!decoded) try { decoded = coder.decode('ammConfig', info.data) } catch (e) {}
-            if (!decoded) try { decoded = coder.decode('amm_config', info.data) } catch (e) {}
+            try { decoded = coder.decode('AmmConfig', info.data) } catch (e) { }
+            if (!decoded) try { decoded = coder.decode('ammConfig', info.data) } catch (e) { }
+            if (!decoded) try { decoded = coder.decode('amm_config', info.data) } catch (e) { }
 
             if (decoded) {
               const feeRate = decoded.tradeFeeRate ?? decoded.trade_fee_rate ?? 0
@@ -381,9 +381,9 @@ export default function Swap() {
           const info = await connection.getAccountInfo(configPubkey)
           if (info) {
             const coder = new anchor.BorshAccountsCoder(idlJson as any)
-            try { configAcct = coder.decode('AmmConfig', info.data) } catch (e) {}
-            if (!configAcct) try { configAcct = coder.decode('ammConfig', info.data) } catch (e) {}
-            if (!configAcct) try { configAcct = coder.decode('amm_config', info.data) } catch (e) {}
+            try { configAcct = coder.decode('AmmConfig', info.data) } catch (e) { }
+            if (!configAcct) try { configAcct = coder.decode('ammConfig', info.data) } catch (e) { }
+            if (!configAcct) try { configAcct = coder.decode('amm_config', info.data) } catch (e) { }
           }
         }
 
@@ -525,13 +525,13 @@ export default function Swap() {
           try {
             const mInfo = await callWithRetry(() => getMint(connection, mint0, 'confirmed', tokenProgram0))
             dec0 = mInfo.decimals
-          } catch (e) {}
+          } catch (e) { }
         }
         if (dec1 === 0 && !isSol1) {
           try {
             const mInfo = await callWithRetry(() => getMint(connection, mint1, 'confirmed', tokenProgram1))
             dec1 = mInfo.decimals
-          } catch (e) {}
+          } catch (e) { }
         }
 
         let bal0 = '0'
@@ -632,29 +632,29 @@ export default function Swap() {
 
     let mint0: any = { decimals: 9 }
     let mint1: any = { decimals: 9 }
-    try { mint0 = await getMint(connection, t0!, 'confirmed', inputTokenProgram) } catch(e) {}
-    try { mint1 = await getMint(connection, t1!, 'confirmed', outputTokenProgram) } catch(e) {}
+    try { mint0 = await getMint(connection, t0!, 'confirmed', inputTokenProgram) } catch (e) { }
+    try { mint1 = await getMint(connection, t1!, 'confirmed', outputTokenProgram) } catch (e) { }
 
     let vault0Amount = new BN(0)
     let vault1Amount = new BN(0)
     try {
       const vault0Acct = await getAccount(connection, token0Vault, 'confirmed', inputTokenProgram)
       vault0Amount = new BN(vault0Acct.amount.toString())
-    } catch(e) {
+    } catch (e) {
       try {
         const bal0 = await connection.getTokenAccountBalance(token0Vault)
         vault0Amount = new BN(bal0.value.amount)
-      } catch(err) {}
+      } catch (err) { }
     }
 
     try {
       const vault1Acct = await getAccount(connection, token1Vault, 'confirmed', outputTokenProgram)
       vault1Amount = new BN(vault1Acct.amount.toString())
-    } catch(e) {
+    } catch (e) {
       try {
         const bal1 = await connection.getTokenAccountBalance(token1Vault)
         vault1Amount = new BN(bal1.value.amount)
-      } catch(err) {}
+      } catch (err) { }
     }
 
     let poolStateAcct: any = null
@@ -664,9 +664,9 @@ export default function Swap() {
       const info = await connection.getAccountInfo(poolAddr)
       if (!info) throw new Error('Pool account not found')
       const coder = new anchor.BorshAccountsCoder(idlJson as any)
-      try { poolStateAcct = coder.decode('poolState', info.data) } catch (e) {}
-      if (!poolStateAcct) try { poolStateAcct = coder.decode('pool_state', info.data) } catch (e) {}
-      if (!poolStateAcct) try { poolStateAcct = coder.decode('PoolState', info.data) } catch (e) {}
+      try { poolStateAcct = coder.decode('poolState', info.data) } catch (e) { }
+      if (!poolStateAcct) try { poolStateAcct = coder.decode('pool_state', info.data) } catch (e) { }
+      if (!poolStateAcct) try { poolStateAcct = coder.decode('PoolState', info.data) } catch (e) { }
       if (!poolStateAcct) throw new Error('Failed to decode pool state')
     }
 
@@ -698,17 +698,17 @@ export default function Swap() {
       if (program) {
         try {
           ammConfigAcct = await (program.account as any).ammConfig.fetch(ammConfigParam as PublicKey)
-        } catch(e) {}
+        } catch (e) { }
       } else if (ammConfigParam) {
         try {
           const configInfo = await connection.getAccountInfo(ammConfigParam)
           if (configInfo) {
             const coder = new anchor.BorshAccountsCoder(idlJson as any)
-            try { ammConfigAcct = coder.decode('AmmConfig', configInfo.data) } catch (e) {}
-            if (!ammConfigAcct) try { ammConfigAcct = coder.decode('ammConfig', configInfo.data) } catch (e) {}
-            if (!ammConfigAcct) try { ammConfigAcct = coder.decode('amm_config', configInfo.data) } catch (e) {}
+            try { ammConfigAcct = coder.decode('AmmConfig', configInfo.data) } catch (e) { }
+            if (!ammConfigAcct) try { ammConfigAcct = coder.decode('ammConfig', configInfo.data) } catch (e) { }
+            if (!ammConfigAcct) try { ammConfigAcct = coder.decode('amm_config', configInfo.data) } catch (e) { }
           }
-        } catch(e) {}
+        } catch (e) { }
       }
     }
 
@@ -1177,12 +1177,13 @@ export default function Swap() {
 
   const priceToken0 = getShortTokenName(token0Str)
   const priceToken1 = getShortTokenName(token1Str)
-  const pricePairLabel = showInversePrice ? `${priceToken1}/${priceToken0}` : `${priceToken0}/${priceToken1}`
+  const firstTokenSymbol = showInversePrice ? `${priceToken1}` : `${priceToken0}`
+  const secondTokenSymbol = showInversePrice ? `${priceToken0}` : `${priceToken1}`
   const priceValue = showInversePrice ? priceDetails?.token1ToToken0 : priceDetails?.token0ToToken1
   const priceText = priceLoading
     ? 'Loading price...'
     : priceValue
-      ? `${pricePairLabel} = ${priceValue}`
+      ? `1 ${firstTokenSymbol} = ${priceValue} ${secondTokenSymbol}`
       : 'Price unavailable'
 
   const filteredPools = allPools.filter((pool) => {
