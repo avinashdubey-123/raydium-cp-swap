@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Header from './components/Header/Header'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import Liquidity from './pages/Liquidity/Liquidity'
 import InitializeLiquidity from './pages/InitializeForm/InitializeForm'
 import DepositForm from './pages/DepositForm/DepositForm'
