@@ -11,40 +11,69 @@ import Admin from './pages/Admin/Admin'
 import WithdrawForm from './pages/WithdrawForm/WithdrawForm'
 import CollectFees from './pages/Admin/CollectFees'
 
-function PersistentMainPages({ activePath }: { activePath: '/liquidity' | '/swap' | '/portfolio' }) {
-  const [visited, setVisited] = useState<{ liquidity: boolean; swap: boolean; portfolio: boolean }>({
-    liquidity: true,
-    swap: false,
-    portfolio: false,
+function PersistentPages({ activePath }: { activePath: string }) {
+  const [visited, setVisited] = useState<Record<string, boolean>>({
+    '/liquidity': true,
   })
 
   useEffect(() => {
-    if (activePath === '/liquidity' && !visited.liquidity) {
-      setVisited((current) => ({ ...current, liquidity: true }))
+    // Treat '/' as '/liquidity'
+    const path = activePath === '/' ? '/liquidity' : activePath;
+    if (path && !visited[path]) {
+      setVisited((current) => ({ ...current, [path]: true }))
     }
-    if (activePath === '/swap' && !visited.swap) {
-      setVisited((current) => ({ ...current, swap: true }))
-    }
-    if (activePath === '/portfolio' && !visited.portfolio) {
-      setVisited((current) => ({ ...current, portfolio: true }))
-    }
-  }, [activePath, visited.liquidity, visited.swap, visited.portfolio])
+  }, [activePath, visited])
+
+  const isPath = (path: string) => {
+    if (path === '/liquidity' && (activePath === '/' || activePath === '/liquidity')) return true;
+    return activePath === path;
+  };
 
   return (
     <>
-      {visited.liquidity && (
-        <div style={{ display: activePath === '/liquidity' ? 'block' : 'none' }}>
+      {visited['/liquidity'] && (
+        <div style={{ display: isPath('/liquidity') ? 'block' : 'none' }}>
           <Liquidity />
         </div>
       )}
-      {visited.swap && (
-        <div style={{ display: activePath === '/swap' ? 'block' : 'none' }}>
+      {visited['/swap'] && (
+        <div style={{ display: isPath('/swap') ? 'block' : 'none' }}>
           <Swap />
         </div>
       )}
-      {visited.portfolio && (
-        <div style={{ display: activePath === '/portfolio' ? 'block' : 'none' }}>
+      {visited['/portfolio'] && (
+        <div style={{ display: isPath('/portfolio') ? 'block' : 'none' }}>
           <Portfolio />
+        </div>
+      )}
+      {visited['/liquidity/create'] && (
+        <div style={{ display: isPath('/liquidity/create') ? 'block' : 'none' }}>
+          <InitializeLiquidity />
+        </div>
+      )}
+      {visited['/liquidity/deposit'] && (
+        <div style={{ display: isPath('/liquidity/deposit') ? 'block' : 'none' }}>
+          <DepositForm />
+        </div>
+      )}
+      {visited['/liquidity/withdraw'] && (
+        <div style={{ display: isPath('/liquidity/withdraw') ? 'block' : 'none' }}>
+          <WithdrawForm />
+        </div>
+      )}
+      {visited['/portfolio/creator-fees'] && (
+        <div style={{ display: isPath('/portfolio/creator-fees') ? 'block' : 'none' }}>
+          <CreatorFees />
+        </div>
+      )}
+      {visited['/admin'] && (
+        <div style={{ display: isPath('/admin') ? 'block' : 'none' }}>
+          <Admin />
+        </div>
+      )}
+      {visited['/admin/collect-fees'] && (
+        <div style={{ display: isPath('/admin/collect-fees') ? 'block' : 'none' }}>
+          <CollectFees />
         </div>
       )}
     </>
@@ -54,25 +83,12 @@ function PersistentMainPages({ activePath }: { activePath: '/liquidity' | '/swap
 function App() {
   const location = useLocation()
   const path = location.pathname
-  const activePersistentPath = path === '/' ? '/liquidity' : path
-  const showPersistent = activePersistentPath === '/liquidity' || activePersistentPath === '/swap' || activePersistentPath === '/portfolio'
 
   return (
     <>
       <Header />
       <main>
-        {showPersistent ? (
-          <PersistentMainPages activePath={activePersistentPath as '/liquidity' | '/swap' | '/portfolio'} />
-        ) : (
-          <Routes>
-            <Route path="/liquidity/create" element={<InitializeLiquidity />} />
-            <Route path="/liquidity/deposit" element={<DepositForm />} />
-            <Route path='/liquidity/withdraw' element={<WithdrawForm />} />
-            <Route path='/portfolio/creator-fees' element={<CreatorFees />} />
-            <Route path='/admin' element={<Admin />} />
-            <Route path='/admin/collect-fees' element={<CollectFees />} />
-          </Routes>
-        )}
+        <PersistentPages activePath={path} />
       </main>
     </>
   )
