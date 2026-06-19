@@ -33,14 +33,28 @@
 }
 
 .admin-title {
-  background: linear-gradient(90deg, #39d0d8 0%, #2b6cb0 50%, rgb(247, 0, 255) 160%);
-  margin: 0 0 6px;
-  padding-bottom: 8px;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
   font-size: 32px;
-  font-weight: bold;
+  font-weight: 700;
+  margin: 0 0 6px;
+  padding-right: 2px;
+  padding-bottom: 8px;
+  background: linear-gradient(120deg, #39d0d8 0%, #2b6cb0 33%, #d000ffce 66%, #39d0d8 100%);
+  background-size: 200% auto;
+
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+
+  animation: shine-rtl 10s linear infinite;
+}
+
+@keyframes shine-rtl {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
 .admin-hero p {

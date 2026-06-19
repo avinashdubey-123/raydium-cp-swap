@@ -279,7 +279,7 @@
 
 .swap-price-strip {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
@@ -298,6 +298,7 @@
 
 .swap-price-strip__text {
   color: var(--if-text-light);
+  width: 160px;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
@@ -342,6 +343,7 @@
 .swap-price-strip__icon {
   width: 14px;
   height: 14px;
+  filter: invert(72%) sepia(45%) saturate(735%) hue-rotate(139deg) brightness(97%) contrast(92%);
 }
 
 .swap-price-strip__label {
@@ -735,7 +737,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(15, 25, 41, 0.6);
+  background: #101926;
   border: 1px solid rgba(57, 162, 194, 0.15);
   border-radius: 12px;
   padding: 10px 14px;
@@ -790,10 +792,9 @@
 }
 
 .pool-details-card__value {
-  font-size: 20px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--if-text-light, #f7fafc);
-  line-height: 1.1;
   margin-bottom: 4px;
 }
 
@@ -904,8 +905,8 @@
 }
 
 .wallet-mini-icon {
-  color: #718096;
   flex-shrink: 0;
+  filter: invert(44%) sepia(1%) saturate(2061%) hue-rotate(317deg) brightness(91%) contrast(87%);
 }
 
 .swap-input-card-balance-val {
@@ -1094,4 +1095,86 @@
 
 .swap-pool-search-clear:hover {
   color: #ffffff;
+}
+
+/* Slippage Selector */
+.swap-slippage-container {
+  position: relative;
+  display: inline-block;
+}
+
+.swap-slippage-toggle {
+  background: #182335;
+  border: 1px solid #24354f;
+  color: #718096;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.swap-slippage-toggle:hover,
+.swap-slippage-toggle:active {
+  border-color: #39d0d8;
+  color: #39d0d8;
+}
+
+.swap-slippage-toggle:hover svg,
+.swap-slippage-toggle:active svg {
+  stroke: #39d0d8;
+}
+
+.swap-slippage-overlay {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #101926;
+  border: 1px solid #1e2d45;
+  border-radius: 12px;
+  padding: 12px;
+  z-index: 50;
+  min-width: 180px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+.swap-slippage-overlay-title {
+  font-size: 12px;
+  color: #718096;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.swap-slippage-options {
+  display: flex;
+  gap: 6px;
+}
+
+.swap-slippage-option {
+  flex: 1;
+  background: #182335;
+  border: 1px solid #24354f;
+  color: #c8d4e8;
+  padding: 6px 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.swap-slippage-option:hover {
+  background: #1e2c43;
+  border-color: rgba(57, 208, 216, 0.4);
+}
+
+.swap-slippage-option.active {
+  background: rgba(57, 208, 216, 0.1);
+  border-color: #39d0d8;
+  color: #39d0d8;
 }

@@ -391,18 +391,7 @@ const Portfolio = () => {
     return <div className="portfolio-container-empty">Please connect your wallet</div>
   }
 
-  if (loading) {
-    return (
-      <div className="portfolio-container-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading portfolio...</p>
-      </div>
-    )
-  }
 
-  if (error) {
-    return <div className="portfolio-container error-state">Error: {error}</div>
-  }
 
   const tokenSummary = (() => {
     const map = new Map<string, { symbol: string; amount: number; pools: Set<string> }>()
@@ -489,7 +478,7 @@ const Portfolio = () => {
   return (
     <div className="portfolio-wrapper">
       <div className="portfolio-header-section">
-        <h1 className="portfolio-title-new">Portfolio</h1>
+        <h1 className="portfolio-title">Portfolio</h1>
         <p className="portfolio-subtitle">Manage and track your liquidity pools, tokens, and recent activities.</p>
       </div>
 
@@ -527,6 +516,15 @@ const Portfolio = () => {
         )}
       </div>
 
+      {loading ? (
+        <div className="portfolio-container-loading" style={{ marginTop: '20px' }}>
+          <div className="loading-spinner"></div>
+          <p>Loading portfolio...</p>
+        </div>
+      ) : error ? (
+        <div className="portfolio-container error-state" style={{ marginTop: '20px' }}>Error: {error}</div>
+      ) : (
+        <>
       {/* Invested Assets Tab */}
       {activeTab === 'assets' && (
         <div className="invested-assets-tab-content">
@@ -821,6 +819,8 @@ const Portfolio = () => {
             </div>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   )

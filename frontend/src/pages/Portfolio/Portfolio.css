@@ -14,16 +14,37 @@
   text-align: left;
 }
 
-.portfolio-title-new {
+.portfolio-title {
   font-size: 32px;
   font-weight: 700;
-  margin: 0 0 8px 0;
-  background: linear-gradient(90deg, #39d0d8 0%, #2b6cb0 5%, rgb(247, 0, 255) 15%);
+  margin: 0 0 6px;
+  padding-right: 2px;
+  padding-bottom: 8px;
+  background: linear-gradient(120deg,
+      #39d0d8 0%,
+      #2b6cb0 10%,
+      #d000ffce 30%,
+      #39d0d8 45%,
+      #2b6cb0 60%,
+      #d000ffce 80%,
+      #39d0d8 100%);
+  background-size: 200% auto;
+
   -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   background-clip: text;
-  color: transparent;
-  padding: 2px;
-  letter-spacing: -0.02em;
+
+  animation: shine-rtl 10s linear infinite;
+}
+
+@keyframes shine-rtl {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
 .portfolio-subtitle {
@@ -180,8 +201,8 @@
 
 .asset-row-pool-count-btn {
   background: rgba(56, 189, 248, 0.06);
-  border: 1px solid rgba(56, 189, 248, 0.12);
-  color: #38bdf8;
+  border: 1px solid #39d0d8;
+  color: #39d0d8;
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
@@ -426,7 +447,7 @@
 .view-details-toggle-btn {
   background: transparent;
   border: none;
-  color: #64748b;
+  color: #39d0d8;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -435,14 +456,10 @@
   transition: all 0.15s ease;
 }
 
-.view-details-toggle-btn:hover {
-  color: #cbd5e1;
-  background: rgba(255, 255, 255, 0.03);
+.view-details-toggle-btn:hover{
+  filter: brightness(0.9);
 }
 
-.view-details-toggle-btn.active {
-  color: #38bdf8;
-}
 
 /* Collapsible Details Panel */
 .liquidity-card-details-panel-v2 {
@@ -714,6 +731,7 @@
     align-items: flex-start;
     gap: 12px;
   }
+
   .asset-row-card {
     flex-direction: column;
     align-items: flex-start;

@@ -619,8 +619,8 @@ export default function InitializeForm() {
               <span className="initialize-note__icon">!</span> Please Note
             </div>
             <div className="initialize-note__body">
-              This tool is for advanced users. For detailed instructions, read the guide for <a className="initialize-link" href="https://docs.raydium.io/raydium/build/developer-guides/clmm/creating-a-pool#creating-a-pool" target="_blank" rel="noreferrer">CLMM</a> or <span className="initialize-link">Standard</span> pools.
-            </div>
+              This tool is for advanced users. For more information about initialization steps, please consult the developer guides for <span className="initialize-link">AMM</span> or <span className="initialize-link">CLMM</span> pools.
+              </div>
           </aside>
 
           <aside className="initialize-balances-card">

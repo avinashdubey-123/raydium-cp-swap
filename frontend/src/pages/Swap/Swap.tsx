@@ -14,7 +14,6 @@ import {
   getAccount,
 } from '@solana/spl-token'
 import copyIcon from '../../assets/copy.svg'
-import showPriceIcon from '../../assets/show-price.svg'
 import straightArrowIcon from '../../assets/straight-arrow.svg'
 import swapIcon from '../../assets/swap.svg'
 import walletIcon from '../../assets/wallet.svg'
@@ -233,6 +232,15 @@ export default function Swap() {
   const [showInversePrice, setShowInversePrice] = useState(false)
   const [priceDetails, setPriceDetails] = useState<{ token0ToToken1: string; token1ToToken0: string } | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
+  const [slippage, setSlippage] = useState<number>(0.5)
+  const [showSlippageSelector, setShowSlippageSelector] = useState(false)
+  const [showSwapDetails, setShowSwapDetails] = useState(false)
+
+  useEffect(() => {
+    setShowSwapDetails(false)
+    const timeoutId = setTimeout(() => setShowSwapDetails(true), 200)
+    return () => clearTimeout(timeoutId)
+  }, [amountIn, amountOut])
 
   const parseHumanAmountToBaseUnits = (value: string, decimals: number) => {
     const normalized = value.trim()
@@ -424,34 +432,53 @@ export default function Swap() {
     }
   }, [activePool?.ammConfig, program, connection])
 
-  const updateInputAmount = async (value: string) => {
+  const inputTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const outputTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const updateInputAmount = (value: string) => {
     setLastEditedField('input')
     setAmountIn(value)
+    
+    if (inputTimeoutRef.current) clearTimeout(inputTimeoutRef.current)
+
     if (!value || Number(value) <= 0) {
       setAmountOut('')
       return
     }
-    try {
-      const quote = await quoteExactIn(value)
-      setAmountOut(formatBaseUnitsToHuman(quote.receiveAmount, quote.outputDecimals))
-    } catch (err) {
-      setAmountOut('')
-    }
+    
+    setAmountOut('0')
+    
+    inputTimeoutRef.current = setTimeout(async () => {
+      try {
+        const quote = await quoteExactIn(value)
+        setAmountOut(formatBaseUnitsToHuman(quote.receiveAmount, quote.outputDecimals))
+      } catch (err) {
+        setAmountOut('')
+      }
+    }, 200)
   }
 
-  const updateOutputAmount = async (value: string) => {
+  const updateOutputAmount = (value: string) => {
     setLastEditedField('output')
     setAmountOut(value)
+    
+    if (outputTimeoutRef.current) clearTimeout(outputTimeoutRef.current)
+
     if (!value || Number(value) <= 0) {
       setAmountIn('')
       return
     }
-    try {
-      const quote = await quoteExactOut(value)
-      setAmountIn(formatBaseUnitsToHuman(quote.maxInputPreFee, quote.inputDecimals))
-    } catch (err) {
-      setAmountIn('')
-    }
+
+    setAmountIn('0')
+
+    outputTimeoutRef.current = setTimeout(async () => {
+      try {
+        const quote = await quoteExactOut(value)
+        setAmountIn(formatBaseUnitsToHuman(quote.maxInputPreFee, quote.inputDecimals))
+      } catch (err) {
+        setAmountIn('')
+      }
+    }, 200)
   }
 
   const [showWalletConnectedToast, setShowWalletConnectedToast] = useState(false)
@@ -575,8 +602,8 @@ export default function Swap() {
 
   const toggleSwapDirection = () => {
     setSwapDirection((current) => (current === 'token0-to-token1' ? 'token1-to-token0' : 'token0-to-token1'))
-    setAmountIn(amountOut)
-    setAmountOut(amountIn)
+    setAmountIn('')
+    setAmountOut('')
     setLastEditedField('input')
     setStatus(null)
     setErrorDetails(null)
@@ -990,7 +1017,8 @@ export default function Swap() {
         }
 
         const quote = await quoteExactIn(amountIn)
-        const minimumAmountOut = quote.receiveAmount.mul(new BN(99)).div(new BN(100))
+        const slippageBps = Math.floor(slippage * 100)
+        const minimumAmountOut = quote.receiveAmount.mul(new BN(10000 - slippageBps)).div(new BN(10000))
 
         setStatus('Sending swap transaction...')
         try {
@@ -1050,7 +1078,8 @@ export default function Swap() {
         }
 
         const quote = await quoteExactOut(amountOut)
-        const maximumInputPreFee = quote.maxInputPreFee.mul(new BN(101)).div(new BN(100))
+        const slippageBps = Math.floor(slippage * 100)
+        const maximumInputPreFee = quote.maxInputPreFee.mul(new BN(10000 + slippageBps)).div(new BN(10000))
 
         setStatus('Sending swap transaction...')
         try {
@@ -1164,8 +1193,7 @@ export default function Swap() {
   const inputBalance = isToken0ToToken1 ? userBalances?.token0 : userBalances?.token1
   const outputBalance = isToken0ToToken1 ? userBalances?.token1 : userBalances?.token0
   const isInputBalanceExceeded = inputBalance != null && Number(amountIn || '0') > parseBalanceValue(inputBalance)
-  const isOutputBalanceExceeded = outputBalance != null && Number(amountOut || '0') > parseBalanceValue(outputBalance)
-  const activeBalanceExceeded = lastEditedField === 'output' ? isOutputBalanceExceeded : isInputBalanceExceeded
+  const activeBalanceExceeded = isInputBalanceExceeded
   const hasValidSwapAmount = Number(amountIn || '0') > 0 || Number(amountOut || '0') > 0
   const colorIn = getTokenColor(inputTokenShort)
   const colorOut = getTokenColor(outputTokenShort)
@@ -1183,8 +1211,24 @@ export default function Swap() {
   const priceText = priceLoading
     ? 'Loading price...'
     : priceValue
-      ? `1 ${firstTokenSymbol} = ${priceValue} ${secondTokenSymbol}`
+      ? `1 ${firstTokenSymbol} ≈ ${priceValue} ${secondTokenSymbol}`
       : 'Price unavailable'
+
+  const slippageDecimal = slippage / 100
+  const estimatedReceived = Number(amountOut || '0')
+  const estimatedInput = Number(amountIn || '0')
+  const minReceived = estimatedReceived * (1 - slippageDecimal)
+  const maxInput = estimatedInput * (1 + slippageDecimal)
+
+  const currentSpotPrice = isToken0ToToken1 
+    ? Number(priceDetails?.token1ToToken0 || '0') 
+    : Number(priceDetails?.token0ToToken1 || '0')
+  
+  let priceImpact = 0
+  if (estimatedInput > 0 && estimatedReceived > 0 && currentSpotPrice > 0) {
+    const executionPrice = estimatedInput / estimatedReceived
+    priceImpact = (1 - (currentSpotPrice / executionPrice)) * 100
+  }
 
   const filteredPools = allPools.filter((pool) => {
     if (!searchQuery) return true
@@ -1371,22 +1415,6 @@ export default function Swap() {
                             <span className="pool-details-card__value">{priceText}</span>
                           </div>
 
-                          {poolReserves && (
-                            <div className="pool-details-card">
-                              <span className="pool-details-card__label">Total Pool Liquidity</span>
-                              <div className="pool-details-balances">
-                                <div className="pool-balance-row">
-                                  <span className="pool-balance-token">{getShortTokenName(token0Str)}</span>
-                                  <span className="pool-balance-amount">{formatAmount(poolReserves.reserve0)}</span>
-                                </div>
-                                <div className="pool-balance-row">
-                                  <span className="pool-balance-token">{getShortTokenName(token1Str)}</span>
-                                  <span className="pool-balance-amount">{formatAmount(poolReserves.reserve1)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
                           <div className="pool-details-card">
                             <span className="pool-details-card__label">Your Balances</span>
                             <div className="pool-details-balances">
@@ -1408,7 +1436,41 @@ export default function Swap() {
                   </div>
 
                   <div className="swap-panel">
-                    <h3>Swap Amount</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h3 style={{ margin: 0 }}>Swap Amount</h3>
+                      <div className="swap-slippage-container">
+                        <button 
+                          type="button"
+                          className="swap-slippage-toggle"
+                          onClick={() => setShowSlippageSelector(!showSlippageSelector)}
+                          title="Slippage tolerance"
+                        >
+                          <span>{slippage}%</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        </button>
+
+                        {showSlippageSelector && (
+                          <div className="swap-slippage-overlay">
+                            <div className="swap-slippage-overlay-title">Max Slippage</div>
+                            <div className="swap-slippage-options">
+                              {[0.1, 0.5, 1].map((val) => (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  className={`swap-slippage-option ${slippage === val ? 'active' : ''}`}
+                                  onClick={() => {
+                                    setSlippage(val);
+                                    setShowSlippageSelector(false);
+                                  }}
+                                >
+                                  {val}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                     <form className="swap-form" onSubmit={onSubmit}>
                       {/* From Card */}
                       <div className={`swap-input-card ${lastEditedField === 'input' && isInputBalanceExceeded ? 'swap-input-card--invalid' : ''}`}>
@@ -1416,7 +1478,7 @@ export default function Swap() {
                           <span className="swap-input-card-label">From</span>
                           <div className="swap-input-card-balance-wrap">
                             <img src={walletIcon} alt="Wallet" className="wallet-mini-icon" />
-                            <span className="swap-input-card-balance-val">{inputBalance ?? '0'}</span>
+                            <span className="swap-input-card-balance-val" style={{ color: isInputBalanceExceeded ? '#ff4d4f' : undefined }}>{inputBalance ?? '0'}</span>
                             <>
                               <button
                                 type="button"
@@ -1487,7 +1549,7 @@ export default function Swap() {
                       </div>
 
                       {/* To Card */}
-                      <div className={`swap-input-card ${lastEditedField === 'output' && isOutputBalanceExceeded ? 'swap-input-card--invalid' : ''}`}>
+                      <div className={`swap-input-card`}>
                         <div className="swap-input-card-header">
                           <span className="swap-input-card-label">To</span>
                           <div className="swap-input-card-balance-wrap">
@@ -1561,7 +1623,7 @@ export default function Swap() {
                               onClick={() => setShowInversePrice((current) => !current)}
                               aria-label={showInversePrice ? 'Show token0 to token1 price' : 'Show token1 to token0 price'}
                             >
-                              <img src={showPriceIcon} alt="toggle price" className="swap-price-strip__icon" />
+                              <img src={swapIcon} alt="toggle price" className="swap-price-strip__icon" />
                             </button>
                           </div>
                         </div>
@@ -1572,6 +1634,28 @@ export default function Swap() {
                             : `Editing ${outputQuoteLabel} quotes the maximum ${inputQuoteLabel} input required.`}
                         </div>
                       </div>
+
+                      {hasValidSwapAmount && showSwapDetails && (
+                        <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--if-background-surface, rgba(15, 25, 41, 0.45))', borderRadius: '12px', fontSize: '13px', color: 'var(--if-text-secondary, #718096)', display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid rgba(30, 45, 69, 0.7)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Price Impact</span>
+                            <span style={{ color: priceImpact > 5 ? '#ff4d4f' : 'inherit' }}>
+                              {priceImpact === 0 ? '-' : priceImpact < 0.01 ? '<0.01%' : `${priceImpact.toFixed(2)}%`}
+                            </span>
+                          </div>
+                          {lastEditedField === 'input' ? (
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Minimum Received</span>
+                              <span>{minReceived.toFixed(6)} {outputTokenShort}</span>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Maximum Input</span>
+                              <span>{maxInput.toFixed(6)} {inputTokenShort}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div className="swap-actions-row">
                         <button type="submit" className="swap-btn-full" disabled={!canSubmitSwap}>

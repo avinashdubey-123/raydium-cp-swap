@@ -3,7 +3,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
-import raydiumLogo from '../../assets/raydium-logo.svg'
+import heluxLogo from '../../assets/helux-logo.svg'
 
 const ADMIN_ID = new PublicKey('wE2EtwuovRxvXZoThsXhRTuCrFdAA1jTbLnJp9nfezL')
 
@@ -16,7 +16,7 @@ export default function Header() {
   return (
     <header className="rcs-header">
         <NavLink to='/liquidity' className="rcs-logo">
-          <img src={raydiumLogo} />
+          <img src={heluxLogo} />
         </NavLink>
         <nav className="rcs-nav">
           <NavLink to='/swap' className="rcs-nav__item">Swap</NavLink>

@@ -132,10 +132,6 @@
   transition: color 0.15s ease;
 }
 
-.initialize-link:hover {
-  color: var(--if-accent-hover);
-  text-decoration: underline;
-}
 
 /* Main Container Form Layout */
 .initialize-main {
