@@ -68,11 +68,11 @@ function appendTrackerEntry(entry: MintTrackerEntry) {
 async function main() {
   // Hardcoded configuration (edit these values directly)
   const rpc = "https://api.devnet.solana.com"; // RPC endpoint
-  const payerPath = "/home/avinash_dubey/.config/solana/id1.json"; // path to payer keypair JSON (no trailing space)
+  const payerPath = "/home/avinash_dubey/.config/solana/anchor-base.json"; // path to payer keypair JSON (no trailing space)
   const decimals = 9; // mint decimals
-  const mintArg: string = "288X3QggojQrXfVRuxah5F6PWTBxJkdLnQ8YbUNGrkjT"; // "new" or existing mint pubkey string
+  const mintArg: string = "DEzz2hBGDDPRC58WRpswFjYVH2M5BbhR9q6xVeTK2qKv"; // "new" or existing mint pubkey string
   // Single recipient: format "ADDRESS" or "ADDRESS:AMOUNT" (amount in token units)
-  const recipientArg: string = "F8j5MGtzkWcu4BsNtFHjokcYDyyik31nQ9M8GSbdiXgy:2000"; // <<< REPLACE before running
+  const recipientArg: string = "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz:5000"; // <<< REPLACE before running
 
   if (recipientArg.includes("REPLACE_WITH_RECIPIENT_PUBKEY")) {
     console.error("Please edit scripts/mint/create_and_mint.ts and set `recipientArg` to a real recipient pubkey before running.");
