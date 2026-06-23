@@ -563,3 +563,81 @@
   text-align: center;
   margin-top: 16px;
 }
+
+/* ── "Loading more" batch row ─────────────────────────────────── */
+.lp-loading-more-row td {
+  padding: 14px 20px;
+  border-top: 1px dashed rgba(57, 208, 216, 0.12);
+  text-align: center;
+}
+
+.lp-loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #4a5a70;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.lp-loading-more-centered {
+  justify-content: center;
+  width: 100%;
+}
+
+.lp-loading-more-text {
+  opacity: 0.75;
+}
+
+/* ── Inline three-dot loader ──────────────────────────────────── */
+.inline-loader,
+.inline-loader div {
+  box-sizing: border-box;
+}
+.inline-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 40px;
+  height: 14px;
+}
+.inline-loader div {
+  position: absolute;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #39d0d8;
+  animation-timing-function: cubic-bezier(0, 1, 1, 0);
+}
+.inline-loader div:nth-child(1) {
+  left: 4px;
+  animation: inline-loader1 0.6s infinite;
+}
+.inline-loader div:nth-child(2) {
+  left: 4px;
+  animation: inline-loader2 0.6s infinite;
+}
+.inline-loader div:nth-child(3) {
+  left: 16px;
+  animation: inline-loader2 0.6s infinite;
+}
+.inline-loader div:nth-child(4) {
+  left: 28px;
+  animation: inline-loader3 0.6s infinite;
+}
+@keyframes inline-loader1 {
+  0% { transform: scale(0); }
+  100% { transform: scale(1); }
+}
+@keyframes inline-loader3 {
+  0% { transform: scale(1); }
+  100% { transform: scale(0); }
+}
+@keyframes inline-loader2 {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(12px, 0); }
+}

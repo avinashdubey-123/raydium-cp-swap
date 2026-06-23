@@ -1,16 +1,15 @@
 import { useNavigate } from 'react-router-dom'
 import './Liquidity.css'
-import usePool from '../../hooks/usePool'
 import { PublicKey } from '@solana/web3.js'
-import { useConnection } from '@solana/wallet-adapter-react'
-import { getPoolAddress, getPoolVaultAddress } from '../../utils/pda'
 import { useEffect, useMemo, useState, useRef, memo } from 'react'
 import copyIcon from '../../assets/copy.svg'
 import swapIcon from '../../assets/swap.svg'
 import { getShortTokenName, getPoolDisplayName } from '../../utils/token'
-import { useGetPoolsQuery } from '../../store/solanaApi'
+import { useGetPoolsQuery, fetchVaultBalancesBatch } from '../../store/solanaApi'
+import { getPoolAddress } from '../../utils/pda'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
+const BATCH_SIZE = 10
 
 // Deterministic pleasing HSL color generation based on token symbol
 function getTokenColor(symbol: string): string {
@@ -19,7 +18,6 @@ function getTokenColor(symbol: string): string {
     hash = symbol.charCodeAt(i) + ((hash << 5) - hash)
   }
   const hue = Math.abs(hash) % 360
-  // Saturation: 65% for vibrancy, Lightness: 40% for beautiful colors on dark backgrounds
   return `hsl(${hue}, 65%, 40%)`
 }
 
@@ -32,7 +30,24 @@ function toFiniteNumber(value: any): number | null {
   return Number.isFinite(raw) ? raw : null
 }
 
-function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; ammConfigs: any[] }) {
+// Inline three-dot loader component
+function InlineLoader() {
+  return (
+    <div className="inline-loader">
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+    </div>
+  )
+}
+
+function PoolRow({ pool, navigate, ammConfigs, vaultBalances }: {
+  pool: any
+  navigate: any
+  ammConfigs: any[]
+  vaultBalances: { vault0Balance: number | null; vault1Balance: number | null } | null | undefined
+}) {
   const token0 = pool.token0 ? new PublicKey(pool.token0) : undefined
   const token1 = pool.token1 ? new PublicKey(pool.token1) : undefined
   let sortedToken0 = token0
@@ -45,73 +60,31 @@ function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; amm
     }
   }
   const ammConfig = pool.ammConfig ? new PublicKey(pool.ammConfig) : undefined
-  const poolPda = pool.poolPda ? new PublicKey(pool.poolPda) : undefined
-
-  const { vault0Amount: hookVault0, vault1Amount: hookVault1 } = usePool({ poolPda, ammConfig, token0Mint: sortedToken0, token1Mint: sortedToken1, fetchOnMount: false })
-  const { connection } = useConnection()
-  const [rpcVault0, setRpcVault0] = useState<number | null>(null)
-  const [rpcVault1, setRpcVault1] = useState<number | null>(null)
-
-  useEffect(() => {
-    let mounted = true
-    async function fetchVaults() {
-      if (pool.vault0Balance != null || pool.vault1Balance != null) {
-        if (mounted) {
-          setRpcVault0(pool.vault0Balance ?? null)
-          setRpcVault1(pool.vault1Balance ?? null)
-        }
-        return
-      }
-      if (!token0 || !token1 || !ammConfig) return
-      try {
-        const [pda] = await getPoolAddress(ammConfig, sortedToken0!, sortedToken1!, PROGRAM_ID)
-        const [v0] = await getPoolVaultAddress(pda, sortedToken0!, PROGRAM_ID)
-        const [v1] = await getPoolVaultAddress(pda, sortedToken1!, PROGRAM_ID)
-        const b0 = await connection.getTokenAccountBalance(v0).catch(() => null)
-        const b1 = await connection.getTokenAccountBalance(v1).catch(() => null)
-        if (!mounted) return
-        setRpcVault0(b0?.value?.uiAmount ?? null)
-        setRpcVault1(b1?.value?.uiAmount ?? null)
-      } catch (err: any) {
-        const msg = (err?.message || String(err) || '').toLowerCase()
-        if (!msg.includes('429') && !msg.includes('too many requests')) {
-          console.warn('Error fetching vaults:', err?.message || err)
-        }
-      }
-    }
-    fetchVaults()
-    return () => { mounted = false }
-  }, [token0, token1, ammConfig, connection, pool.vault0Balance, pool.vault1Balance])
 
   const name0 = sortedToken0 ? getShortTokenName(sortedToken0.toBase58()) : 'UNKN'
   const name1 = sortedToken1 ? getShortTokenName(sortedToken1.toBase58()) : 'UNKN'
   const displayName = getPoolDisplayName(sortedToken0?.toBase58(), sortedToken1?.toBase58())
 
-  const getIconLabel = (symbol: string) => {
-    return symbol.slice(0, 2).toUpperCase()
-  }
-
+  const getIconLabel = (symbol: string) => symbol.slice(0, 2).toUpperCase()
   const color0 = getTokenColor(name0)
   const color1 = getTokenColor(name1)
 
   const [pairHash] = useState<string | null>(null)
-  const vault0 = hookVault0 ?? rpcVault0 ?? pool.vault0Balance
-  const vault1 = hookVault1 ?? rpcVault1 ?? pool.vault1Balance
-  // Liquidity Display with exactly two decimals and explicit token symbols (e.g. 1023.22 SOL & 1033.64 USDC)
+  
+  // Use batched vault balance data
+  const vault0 = vaultBalances?.vault0Balance ?? pool.vault0Balance
+  const vault1 = vaultBalances?.vault1Balance ?? pool.vault1Balance
   const liquidityDisplay = (vault0 != null && vault1 != null)
     ? `${Number(vault0).toFixed(2)} ${name0} & ${Number(vault1).toFixed(2)} ${name1}`
     : '-'
 
-  // Fetch Fee Tier properly from dynamic on-chain ammConfigs matching
   const getFeeTier = () => {
     if (!pool.ammConfig) return '-'
-    const config = ammConfigs.find(
-      (c) => {
-        const cPub = c.publicKey?.toBase58 ? c.publicKey.toBase58() : String(c.publicKey)
-        const pConfig = pool.ammConfig?.toBase58 ? pool.ammConfig.toBase58() : String(pool.ammConfig)
-        return cPub.toLowerCase() === pConfig.toLowerCase()
-      }
-    )
+    const config = ammConfigs.find((c) => {
+      const cPub = c.publicKey?.toBase58 ? c.publicKey.toBase58() : String(c.publicKey)
+      const pConfig = pool.ammConfig?.toBase58 ? pool.ammConfig.toBase58() : String(pool.ammConfig)
+      return cPub.toLowerCase() === pConfig.toLowerCase()
+    })
     if (!config) {
       return pool.fee ? (String(pool.fee).includes('%') ? pool.fee : `${pool.fee}%`) : '-'
     }
@@ -154,7 +127,6 @@ function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; amm
   }
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
-
   const copyText = async (value?: string | null, key = value ?? '') => {
     if (!value) return
     try {
@@ -181,9 +153,7 @@ function PoolRow({ pool, navigate, ammConfigs }: { pool: any; navigate: any; amm
     try { navigate('/liquidity/deposit', { state }) } catch (e) { navigate('/liquidity/deposit') }
   }
 
-  const onSwap = () => {
-    navigate('/swap', { state: pool })
-  }
+  const onSwap = () => navigate('/swap', { state: pool })
 
   return (
     <tr key={displayName} className="lp-row">
@@ -258,8 +228,85 @@ const Liquidity = () => {
     return typeof raw === 'string' ? raw : JSON.stringify(raw)
   }, [error])
 
-  // Improved case-insensitive, partial match filtering for pool name (display symbol pair) and pool id PDA
-  const filteredPools = pools.filter((p) => {
+  // --- Sequential batch loading: Only show pools that have complete data ---
+  const [vaultBalancesMap, setVaultBalancesMap] = useState<Record<string, { vault0Balance: number | null; vault1Balance: number | null }>>({})
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0)
+  const [isLoadingBatch, setIsLoadingBatch] = useState(false)
+  const [allLoaded, setAllLoaded] = useState(false)
+  const loadingRef = useRef(false)
+
+  // Reset when pools change
+  useEffect(() => {
+    setVaultBalancesMap({})
+    setCurrentBatchIndex(0)
+    setAllLoaded(false)
+    loadingRef.current = false
+  }, [pools])
+
+  // Calculate total batches needed
+  const totalBatches = Math.ceil(pools.length / BATCH_SIZE)
+
+  // Fetch a single batch
+  useEffect(() => {
+    if (loadingPools) return
+    if (pools.length === 0) return
+    if (allLoaded) return
+    if (isLoadingBatch) return
+    if (loadingRef.current) return
+    if (currentBatchIndex >= totalBatches) {
+      setAllLoaded(true)
+      return
+    }
+
+    const fetchBatch = async () => {
+      loadingRef.current = true
+      setIsLoadingBatch(true)
+
+      const start = currentBatchIndex * BATCH_SIZE
+      const end = Math.min(start + BATCH_SIZE, pools.length)
+      const batch = pools.slice(start, end)
+
+      const batchItems = batch
+        .filter(p => p.poolPda)
+        .map(p => ({
+          poolPda: p.poolPda!,
+          token0Vault: p.token0Vault,
+          token1Vault: p.token1Vault,
+        }))
+
+      if (batchItems.length > 0) {
+        try {
+          const results = await fetchVaultBalancesBatch(batchItems)
+          setVaultBalancesMap(prev => ({ ...prev, ...results }))
+        } catch (err) {
+          console.warn('[Liquidity] batch fetch error:', err)
+        }
+      }
+
+      const nextBatchIndex = currentBatchIndex + 1
+      setCurrentBatchIndex(nextBatchIndex)
+      setIsLoadingBatch(false)
+      loadingRef.current = false
+
+      if (nextBatchIndex >= totalBatches) {
+        setAllLoaded(true)
+      }
+    }
+
+    fetchBatch()
+  }, [pools, loadingPools, currentBatchIndex, totalBatches, allLoaded, isLoadingBatch])
+
+  // Only show pools that have vault balance data (complete pool rows)
+  const visiblePools = useMemo(() => {
+    return pools.filter(p => {
+      if (!p.poolPda) return false
+      const vaultData = vaultBalancesMap[p.poolPda]
+      return vaultData && vaultData.vault0Balance !== null && vaultData.vault1Balance !== null
+    })
+  }, [pools, vaultBalancesMap])
+
+  // Filtering (apply to visible pools only)
+  const filteredPools = visiblePools.filter((p) => {
     if (!searchQuery) return true
     const q = searchQuery.trim().toLowerCase()
     const displayName = getPoolDisplayName(p.token0, p.token1).toLowerCase()
@@ -295,8 +342,6 @@ const Liquidity = () => {
           />
         </div>
 
-        {/* Filter pills removed per instruction */}
-
         <div className="lp-filter-right">
           <button className="lp-create-btn" onClick={() => navigate('/liquidity/create')}>
             + Create
@@ -318,7 +363,7 @@ const Liquidity = () => {
             </tr>
           </thead>
           <tbody>
-            {loadingPools ? (
+            {loadingPools || (!allLoaded && filteredPools.length === 0 ) ? (
               <tr>
                 <td colSpan={4}>
                   <div className="portfolio-container-loading">
@@ -330,12 +375,31 @@ const Liquidity = () => {
 
             ) : poolsError ? (
               <tr><td colSpan={4}>Error: {poolsError}</td></tr>
-            ) : filteredPools.length === 0 ? (
+            ) : allLoaded && filteredPools.length === 0 ? (
               <tr><td colSpan={4}>No pools found matching search filter.</td></tr>
             ) : (
-              filteredPools.map((p, idx) => (
-                <MemoPoolRow key={p.poolPda ?? p.token0 ?? idx} pool={p} navigate={navigate} ammConfigs={ammConfigs} />
-              ))
+              <>
+                {filteredPools.map((p, idx) => (
+                  <MemoPoolRow
+                    key={p.poolPda ?? p.token0 ?? idx}
+                    pool={p}
+                    navigate={navigate}
+                    ammConfigs={ammConfigs}
+                    vaultBalances={p.poolPda ? vaultBalancesMap[p.poolPda] : undefined}
+                  />
+                ))}
+                {/* Show loading more until all batches are complete */}
+                {!allLoaded && (
+                  <tr className="lp-row lp-loading-more-row">
+                    <td colSpan={4}>
+                      <div className="lp-loading-more lp-loading-more-centered">
+                        <span className="lp-loading-more-text">Loading more</span>
+                        <InlineLoader />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             )}
           </tbody>
         </table>
@@ -345,4 +409,4 @@ const Liquidity = () => {
   )
 }
 
-export default Liquidity;
+export default Liquidity

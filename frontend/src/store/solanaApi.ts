@@ -150,6 +150,34 @@ async function getTokenBalance(connection: Connection, account: string | null): 
   }
 }
 
+async function getPoolStateAndVaults(
+  connection: Connection,
+  coder: anchor.BorshAccountsCoder,
+  poolPda: string,
+  token0Vault: string | null,
+  token1Vault: string | null
+): Promise<any> {
+  const info = await connection.getAccountInfo(new PublicKey(poolPda))
+  if (!info) return null
+
+  let decodedPool: any = null
+  try { decodedPool = coder.decode('PoolState', info.data) } catch {}
+  if (!decodedPool) { try { decodedPool = coder.decode('poolState', info.data) } catch {} }
+  if (!decodedPool) { try { decodedPool = coder.decode('pool_state', info.data) } catch {} }
+  if (!decodedPool) return null
+
+  const [vault0Balance, vault1Balance] = await Promise.all([
+    getTokenBalance(connection, token0Vault),
+    getTokenBalance(connection, token1Vault),
+  ])
+
+  return {
+    state: decodedPool,
+    vault0Balance,
+    vault1Balance,
+  }
+}
+
 async function fetchPoolsAndConfigs() {
   const connection = getConnection()
   const coder = new anchor.BorshAccountsCoder(idlJson as any)
@@ -198,18 +226,34 @@ async function fetchPoolsAndConfigs() {
     }
   })
 
+  // Return pools immediately without vault balances — the UI will fetch them in batches
+  return { pools: mapped, ammConfigs }
+}
+
+/**
+ * Fetches vault balances for a single batch of pools (up to 10).
+ * Returns a map of poolPda -> { vault0Balance, vault1Balance }.
+ * All requests in the batch are fired in parallel (within the batch) but
+ * the caller is expected to await each batch before requesting the next one.
+ */
+export async function fetchVaultBalancesBatch(
+  batch: Array<{ poolPda: string | null; token0Vault: string | null; token1Vault: string | null }>
+): Promise<Record<string, { vault0Balance: number | null; vault1Balance: number | null }>> {
+  const connection = getConnection()
+  const results: Record<string, { vault0Balance: number | null; vault1Balance: number | null }> = {}
+
   await Promise.all(
-    mapped.map(async (pool) => {
+    batch.map(async (pool) => {
+      if (!pool.poolPda) return
       const [v0, v1] = await Promise.all([
         getTokenBalance(connection, pool.token0Vault),
         getTokenBalance(connection, pool.token1Vault),
       ])
-      pool.vault0Balance = v0
-      pool.vault1Balance = v1
-    }),
+      results[pool.poolPda] = { vault0Balance: v0, vault1Balance: v1 }
+    })
   )
 
-  return { pools: mapped, ammConfigs }
+  return results
 }
 
 export async function refreshPoolCache(dispatch: AppDispatch, poolPda: string) {
@@ -324,7 +368,38 @@ export const solanaApi = createApi({
       providesTags: (_result, _error, poolPda) => [{ type: 'Pools', id: poolPda }],
       keepUnusedDataFor: 60, // Cache for 60 seconds
     }),
+    getPoolStatesBatch: builder.query<
+      Record<string, { state: any; vault0Balance: number | null; vault1Balance: number | null }>,
+      Array<{ poolPda: string; token0Vault: string | null; token1Vault: string | null }>
+    >({
+      queryFn: async (batch) => {
+        try {
+          const connection = getConnection()
+          const coder = new anchor.BorshAccountsCoder(idlJson as any)
+          const results: Record<string, { state: any; vault0Balance: number | null; vault1Balance: number | null }> = {}
+
+          await Promise.all(
+            batch.map(async (pool) => {
+              const result = await getPoolStateAndVaults(connection, coder, pool.poolPda, pool.token0Vault, pool.token1Vault)
+              if (result) {
+                results[pool.poolPda] = result
+              }
+            })
+          )
+
+          return { data: results }
+        } catch (error) {
+          return {
+            error: {
+              status: 'CUSTOM_ERROR',
+              error: error instanceof Error ? error.message : String(error),
+            },
+          }
+        }
+      },
+      keepUnusedDataFor: 60,
+    }),
   }),
 })
 
-export const { useGetPoolsQuery, useGetPoolStateQuery } = solanaApi
+export const { useGetPoolsQuery, useGetPoolStateQuery, useGetPoolStatesBatchQuery } = solanaApi
