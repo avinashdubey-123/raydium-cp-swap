@@ -1,5 +1,6 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react'
-import { clusterApiUrl, Connection, PublicKey } from '@solana/web3.js'
+import { getConnection } from '../utils/SolanaProvider'
+import { Connection, PublicKey } from '@solana/web3.js'
 import * as anchor from '@coral-xyz/anchor'
 import idlJson from '../../idl/raydium_cp_swap.json'
 import type { AppDispatch } from './index'
@@ -44,26 +45,6 @@ export type PortfolioPosition = {
   decimals1?: number
   token0Amount: number
   token1Amount: number
-}
-
-let cachedConnection: Connection | null = null
-let cachedEndpoint = ''
-
-function getEndpoint(): string {
-  const endpointFromWindow = typeof window !== 'undefined' ? (window as any).__SOLANA_ENDPOINT : null
-  if (typeof endpointFromWindow === 'string' && endpointFromWindow.length > 0) {
-    return endpointFromWindow
-  }
-  return clusterApiUrl('devnet')
-}
-
-function getConnection(): Connection {
-  const endpoint = getEndpoint()
-  if (!cachedConnection || cachedEndpoint !== endpoint) {
-    cachedConnection = new Connection(endpoint, 'confirmed')
-    cachedEndpoint = endpoint
-  }
-  return cachedConnection
 }
 
 function toPubString(v: any): string | null {
@@ -231,16 +212,10 @@ async function fetchPoolsAndConfigs() {
   return { pools: mapped, ammConfigs }
 }
 
-/**
- * Fetch fresh vault balances for a single pool and surgically update the
- * getPools cache. This avoids refetching ALL pools when only one changed.
- */
 export async function refreshPoolCache(dispatch: AppDispatch, poolPda: string) {
   try {
     const connection = getConnection()
 
-    // Step 1: Read vault addresses from the cached pool entry.
-    // updateQueryData is synchronous, so we capture values via closure.
     let vault0Addr: string | null = null
     let vault1Addr: string | null = null
 
@@ -257,13 +232,11 @@ export async function refreshPoolCache(dispatch: AppDispatch, poolPda: string) {
 
     if (!vault0Addr || !vault1Addr) return
 
-    // Step 2: Fetch only this pool's vault balances (2 RPC calls total)
     const [newVault0, newVault1] = await Promise.all([
       getTokenBalance(connection, vault0Addr),
       getTokenBalance(connection, vault1Addr),
     ])
 
-    // Step 3: Surgically update only this pool's balances in the cache
     dispatch(
       solanaApi.util.updateQueryData('getPools', undefined, (draft: any) => {
         if (!draft?.pools) return
@@ -279,24 +252,14 @@ export async function refreshPoolCache(dispatch: AppDispatch, poolPda: string) {
   }
 }
 
-/**
- * Invalidate the full pools list (e.g. after creating a new pool).
- */
 export function invalidatePoolsList(dispatch: AppDispatch) {
   dispatch(solanaApi.util.invalidateTags([{ type: 'Pools', id: 'LIST' }]))
 }
 
-/**
- * Invalidate portfolio data (e.g. after deposit/withdraw that changes LP positions).
- */
 export function invalidatePortfolio(dispatch: AppDispatch) {
   dispatch(solanaApi.util.invalidateTags([{ type: 'Portfolio', id: 'LIST' }]))
 }
 
-/**
- * Combined refresh for pool + portfolio after a transaction that affects
- * both pool reserves and user LP positions (deposit / withdraw).
- */
 export async function refreshAfterPoolTx(dispatch: AppDispatch, poolPda: string) {
   await refreshPoolCache(dispatch, poolPda)
   invalidatePortfolio(dispatch)
@@ -322,11 +285,7 @@ export const solanaApi = createApi({
         }
       },
       providesTags: [{ type: 'Pools', id: 'LIST' }],
-      // Keep cached for 30 minutes – no more websocket-triggered refetches.
-      // Data is only invalidated explicitly after transactions.
       keepUnusedDataFor: 60 * 30,
-      // NO onCacheEntryAdded websocket listener – refetches are now
-      // driven exclusively by transactions via the helper functions above.
     }),
     getPoolState: builder.query<any, string>({
       queryFn: async (poolPda) => {

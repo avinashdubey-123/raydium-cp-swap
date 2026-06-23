@@ -1,4 +1,5 @@
 import { PublicKey, Connection } from '@solana/web3.js'
+import { getConnection } from './SolanaProvider'
 import { getAssociatedTokenAddress } from '@solana/spl-token'
 import tokenRegistry from '../data/tokenRegistry.json'
 
@@ -6,13 +7,15 @@ export async function findAssociatedTokenAddress(owner: PublicKey, mint: PublicK
   return getAssociatedTokenAddress(mint, owner)
 }
 
-export async function getTokenBalance(connection: Connection, tokenAccount: PublicKey): Promise<number> {
-  const res = await connection.getTokenAccountBalance(tokenAccount)
-  return Number(res.value.amount)
+export async function getTokenBalance(tokenAccount: PublicKey, connection?: Connection): Promise<number> {
+  const conn = connection ?? getConnection();
+  const res = await conn.getTokenAccountBalance(tokenAccount);
+  return Number(res.value.amount);
 }
 
-export async function getParsedTokenAccount(connection: Connection, account: PublicKey) {
-  return connection.getParsedAccountInfo(account)
+export async function getParsedTokenAccount(account: PublicKey, connection?: Connection) {
+  const conn = connection ?? getConnection();
+  return conn.getParsedAccountInfo(account);
 }
 
 export function getShortTokenName(mintAddress?: string | null): string {
