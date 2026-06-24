@@ -11,6 +11,7 @@ import { RoundDirection } from '../../utils/curve/calculator'
 import copyIcon from '../../assets/copy.svg'
 import viewIcon from '../../assets/view.svg'
 import { getActivities, ActivityItem } from '../../utils/activity'
+import { batchFetchTokenBalances } from '../../utils/batchFetch'
 import './Portfolio.css'
 
 const PROGRAM_ID = new PublicKey('J1h1sProk7RbLzyvsSM8YE1hZz3ALMwQu6wzqeRSRGbD')
@@ -260,6 +261,14 @@ const Portfolio = () => {
   const computePositions = async (lpPositions: LPPosition[], poolsData: Map<string, any>): Promise<ComputedPosition[]> => {
     const computed: ComputedPosition[] = []
 
+    // Step 1: Collect all vault addresses and match with positions
+    const vaultRequests: Array<{ 
+      lpPos: LPPosition
+      poolState: any
+      vault0: PublicKey
+      vault1: PublicKey
+    }> = []
+
     for (const lpPos of lpPositions) {
       try {
         let poolState = null
@@ -276,11 +285,43 @@ const Portfolio = () => {
         const [vault0PDA] = await getPoolVaultAddress(lpPos.poolPda, lpPos.token0Mint, PROGRAM_ID)
         const [vault1PDA] = await getPoolVaultAddress(lpPos.poolPda, lpPos.token1Mint, PROGRAM_ID)
 
-        const vault0Account = await connection.getTokenAccountBalance(vault0PDA)
-        const vault1Account = await connection.getTokenAccountBalance(vault1PDA)
+        vaultRequests.push({
+          lpPos,
+          poolState,
+          vault0: vault0PDA,
+          vault1: vault1PDA,
+        })
+      } catch (err) {
+        console.error('Failed to prepare vault addresses:', err)
+        computed.push({
+          ...lpPos,
+          token0Amount: 0,
+          token1Amount: 0,
+          token0Value: 0,
+          token1Value: 0,
+          totalValue: 0,
+        })
+      }
+    }
 
-        const vault0Balance = new anchor.BN(vault0Account.value.amount || '0')
-        const vault1Balance = new anchor.BN(vault1Account.value.amount || '0')
+    // Step 2: Batch fetch all vault balances (10 at a time)
+    const vaultBalancesMap = await batchFetchTokenBalances(
+      connection,
+      vaultRequests.map(v => ({ vault0: v.vault0, vault1: v.vault1 }))
+    )
+
+    // Step 3: Compute positions using batched vault data
+    for (const { lpPos, poolState, vault0, vault1 } of vaultRequests) {
+      try {
+        const balanceKey = `${vault0.toBase58()}-${vault1.toBase58()}`
+        const balances = vaultBalancesMap.get(balanceKey)
+
+        if (!balances) {
+          throw new Error('Missing vault balances')
+        }
+
+        const vault0Balance = new anchor.BN(balances.vault0Balance ?? 0)
+        const vault1Balance = new anchor.BN(balances.vault1Balance ?? 0)
 
         const rawLpSupply = poolState.lpSupply ?? poolState.lp_supply ?? 0
         const lpTokenSupply = new anchor.BN(rawLpSupply)
