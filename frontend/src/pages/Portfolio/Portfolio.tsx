@@ -9,7 +9,6 @@ import { getPoolVaultAddress } from '../../utils/pda'
 import { ConstantProductCurve } from '../../utils/curve/constantProduct'
 import { RoundDirection } from '../../utils/curve/calculator'
 import copyIcon from '../../assets/copy.svg'
-import viewIcon from '../../assets/view.svg'
 import { getActivities, ActivityItem } from '../../utils/activity'
 import { batchFetchTokenBalances } from '../../utils/batchFetch'
 import './Portfolio.css'
@@ -95,6 +94,33 @@ export function invalidatePortfolioCache(walletAddress?: string) {
     __portfolioCache.delete(walletAddress)
   } else {
     __portfolioCache.clear()
+  }
+}
+
+// Track refetch triggers across component instances
+const __portfolioRefetchTriggers: Map<string, number> = new Map()
+
+/**
+ * Trigger a refetch of the portfolio for a specific wallet.
+ * Call this after transactions to ensure the UI updates immediately.
+ * Uses both in-memory map and sessionStorage to survive page navigations.
+ */
+export function triggerPortfolioRefetch(walletAddress?: string) {
+  if (walletAddress) {
+    const current = __portfolioRefetchTriggers.get(walletAddress) || 0
+    __portfolioRefetchTriggers.set(walletAddress, current + 1)
+    // Also persist to sessionStorage to survive page navigations
+    try {
+      sessionStorage.setItem(`portfolio_refetch_${walletAddress}`, String(current + 1))
+    } catch {}
+  } else {
+    // Increment all triggers
+    for (const [key, value] of __portfolioRefetchTriggers.entries()) {
+      __portfolioRefetchTriggers.set(key, value + 1)
+      try {
+        sessionStorage.setItem(`portfolio_refetch_${key}`, String(value + 1))
+      } catch {}
+    }
   }
 }
 
@@ -316,12 +342,20 @@ const Portfolio = () => {
         const balanceKey = `${vault0.toBase58()}-${vault1.toBase58()}`
         const balances = vaultBalancesMap.get(balanceKey)
 
-        if (!balances) {
-          throw new Error('Missing vault balances')
-        }
+        // Get vault balances - if not available, use 0 but still compute the position
+        // Note: getTokenAccountBalance returns UI amounts, we need to convert to raw amounts
+        const vault0BalanceUi = balances?.vault0Balance ?? 0
+        const vault1BalanceUi = balances?.vault1Balance ?? 0
 
-        const vault0Balance = new anchor.BN(balances.vault0Balance ?? 0)
-        const vault1Balance = new anchor.BN(balances.vault1Balance ?? 0)
+        const token0Decimals = poolState.mint0Decimals ?? poolState.mint_0_decimals ?? poolState.mintDecimals0 ?? 6
+        const token1Decimals = poolState.mint1Decimals ?? poolState.mint_1_decimals ?? poolState.mintDecimals1 ?? 6
+
+        // Convert UI amounts to raw amounts (multiply by 10^decimals)
+        const vault0BalanceRaw = Math.round(vault0BalanceUi * Math.pow(10, token0Decimals))
+        const vault1BalanceRaw = Math.round(vault1BalanceUi * Math.pow(10, token1Decimals))
+
+        const vault0Balance = new anchor.BN(vault0BalanceRaw)
+        const vault1Balance = new anchor.BN(vault1BalanceRaw)
 
         const rawLpSupply = poolState.lpSupply ?? poolState.lp_supply ?? 0
         const lpTokenSupply = new anchor.BN(rawLpSupply)
@@ -329,32 +363,62 @@ const Portfolio = () => {
 
         const lpAmountBN = new anchor.BN(lpPos.lpTokenAmount * Math.pow(10, lpPos.lpTokenDecimals))
 
-        const { tokenAmount0, tokenAmount1 } = ConstantProductCurve.lpTokensToTradingTokens(
-          lpAmountBN,
-          lpTokenSupply,
-          vault0Balance,
-          vault1Balance,
-          RoundDirection.Floor
-        )
+        // Subtract fees from vault balances (same as withdraw does)
+        const proto0 = new anchor.BN(poolState.protocolFeesToken0?.toString?.() ?? poolState.protocolFeesToken0 ?? 0)
+        const fund0 = new anchor.BN(poolState.fundFeesToken0?.toString?.() ?? poolState.fundFeesToken0 ?? 0)
+        const creator0 = new anchor.BN(poolState.creatorFeesToken0?.toString?.() ?? poolState.creatorFeesToken0 ?? 0)
+        const feesToken0 = proto0.add(fund0).add(creator0)
+        
+        const proto1 = new anchor.BN(poolState.protocolFeesToken1?.toString?.() ?? poolState.protocolFeesToken1 ?? 0)
+        const fund1 = new anchor.BN(poolState.fundFeesToken1?.toString?.() ?? poolState.fundFeesToken1 ?? 0)
+        const creator1 = new anchor.BN(poolState.creatorFeesToken1?.toString?.() ?? poolState.creatorFeesToken1 ?? 0)
+        const feesToken1 = proto1.add(fund1).add(creator1)
+        
+        const netVault0 = vault0Balance.sub(feesToken0)
+        const netVault1 = vault1Balance.sub(feesToken1)
 
-        const token0Decimals = poolState.mint0Decimals ?? poolState.mint_0_decimals ?? poolState.mintDecimals0 ?? 6
-        const token1Decimals = poolState.mint1Decimals ?? poolState.mint_1_decimals ?? poolState.mintDecimals1 ?? 6
+        // Only compute if we have valid vault balances and LP supply
+        if (netVault0.gte(new anchor.BN(0)) && netVault1.gte(new anchor.BN(0)) && lpTokenSupply.gte(new anchor.BN(0))) {
+          const { tokenAmount0, tokenAmount1 } = ConstantProductCurve.lpTokensToTradingTokens(
+            lpAmountBN,
+            lpTokenSupply,
+            netVault0,
+            netVault1,
+            RoundDirection.Floor
+          )
 
-        const token0Amount = tokenAmount0.toNumber() / Math.pow(10, token0Decimals)
-        const token1Amount = tokenAmount1.toNumber() / Math.pow(10, token1Decimals)
+          // Cap at vault balance (same as Rust withdraw does)
+          const cappedToken0 = tokenAmount0.gt(netVault0) ? netVault0 : tokenAmount0
+          const cappedToken1 = tokenAmount1.gt(netVault1) ? netVault1 : tokenAmount1
 
-        const token0Value = 0
-        const token1Value = 0
-        const totalValue = 0
+          const token0Amount = cappedToken0.toNumber() / Math.pow(10, token0Decimals)
+          const token1Amount = cappedToken1.toNumber() / Math.pow(10, token1Decimals)
 
-        computed.push({
-          ...lpPos,
-          token0Amount,
-          token1Amount,
-          token0Value,
-          token1Value,
-          totalValue,
-        })
+          console.log('[Portfolio] Computed amounts:', {
+            token0Amount,
+            token1Amount,
+          })
+
+          computed.push({
+            ...lpPos,
+            token0Amount,
+            token1Amount,
+            token0Value: 0,
+            token1Value: 0,
+            totalValue: 0,
+          })
+        } else {
+          // If we can't compute, still add the position with 0 amounts
+          console.log('[Portfolio] Skipping position - invalid balances')
+          computed.push({
+            ...lpPos,
+            token0Amount: 0,
+            token1Amount: 0,
+            token0Value: 0,
+            token1Value: 0,
+            totalValue: 0,
+          })
+        }
       } catch (err) {
         console.error('Failed to compute position:', err)
         computed.push({
@@ -371,14 +435,50 @@ const Portfolio = () => {
     return computed
   }
 
+  // Check for pending refetch trigger
+  const shouldForceRefetch = (() => {
+    if (!wallet.publicKey) return false
+    const walletKey = wallet.publicKey.toBase58()
+    let refetchTrigger = __portfolioRefetchTriggers.get(walletKey) || 0
+    try {
+      const storedTrigger = sessionStorage.getItem(`portfolio_refetch_${walletKey}`)
+      if (storedTrigger) {
+        refetchTrigger = Math.max(refetchTrigger, parseInt(storedTrigger, 10) || 0)
+      }
+    } catch {}
+    return refetchTrigger > 0
+  })()
+
   useEffect(() => {
     if (!program || !wallet.publicKey || !connection) return
 
     const walletKey = wallet.publicKey.toBase58()
 
-    // ── Check persistent cache first ──
+    // Check if there's a pending refetch trigger (from sessionStorage for cross-page navigation)
+    let refetchTrigger = __portfolioRefetchTriggers.get(walletKey) || 0
+    try {
+      const storedTrigger = sessionStorage.getItem(`portfolio_refetch_${walletKey}`)
+      if (storedTrigger) {
+        refetchTrigger = Math.max(refetchTrigger, parseInt(storedTrigger, 10) || 0)
+      }
+    } catch {}
+
+    const isForceRefetch = refetchTrigger > 0
+    
+    if (isForceRefetch) {
+      // Clear the trigger from both in-memory and sessionStorage
+      __portfolioRefetchTriggers.set(walletKey, 0)
+      try {
+        sessionStorage.removeItem(`portfolio_refetch_${walletKey}`)
+      } catch {}
+      // Clear cache to force fresh data
+      __portfolioCache.delete(walletKey)
+      lastLoadedWalletRef.current = null
+    }
+
+    // ── Check persistent cache first (skip if forcing refetch) ──
     const cached = __portfolioCache.get(walletKey)
-    if (cached && Date.now() - cached.ts < PORTFOLIO_CACHE_TTL) {
+    if (!isForceRefetch && cached && Date.now() - cached.ts < PORTFOLIO_CACHE_TTL) {
       // Data is still fresh – render immediately, skip network calls
       setPositions(cached.positions)
       lastLoadedWalletRef.current = walletKey
@@ -387,7 +487,8 @@ const Portfolio = () => {
 
     // ── Avoid redundant fetches if we already loaded for this wallet ──
     // (e.g. program reference changed but wallet didn't)
-    if (lastLoadedWalletRef.current === walletKey && positions.length > 0) {
+    // Skip this check if we're forcing a refetch
+    if (lastLoadedWalletRef.current === walletKey && positions.length > 0 && !isForceRefetch) {
       return
     }
 
@@ -416,7 +517,7 @@ const Portfolio = () => {
     }
 
     loadPortfolio()
-  }, [program, wallet.publicKey, connection])
+  }, [program, wallet.publicKey, connection, positions.length, shouldForceRefetch])
 
   useEffect(() => {
     // Persist the active tab to sessionStorage
@@ -484,19 +585,24 @@ const Portfolio = () => {
   }
 
   const openWithdraw = (pos: ComputedPosition) => {
+    // Only allow withdraw if we have valid computed amounts
+    if (pos.token0Amount <= 0 && pos.token1Amount <= 0) {
+      return
+    }
+    
     navigate('/liquidity/withdraw', {
       state: {
         poolPda: pos.poolPda.toBase58(),
         token0: pos.token0Mint.toBase58(),
         token1: pos.token1Mint.toBase58(),
-        token0Symbol: pos.token0Symbol,
-        token1Symbol: pos.token1Symbol,
+        token0Symbol: pos.token0Symbol || 'TOKEN0',
+        token1Symbol: pos.token1Symbol || 'TOKEN1',
         lpAmount: pos.lpTokenAmount,
         token0Amount: pos.token0Amount,
         token1Amount: pos.token1Amount,
-        token0Value: pos.token0Value,
-        token1Value: pos.token1Value,
-        totalValue: pos.totalValue,
+        token0Value: pos.token0Value ?? 0,
+        token1Value: pos.token1Value ?? 0,
+        totalValue: pos.totalValue ?? 0,
       }
     })
   }
@@ -710,15 +816,6 @@ const Portfolio = () => {
                                     <img src={copyIcon} alt="Copy" className="btn-icon-tiny" />
                                   )}
                                 </button>
-                                <a
-                                  href={`https://explorer.solana.com/address/${poolAddrStr}?cluster=devnet`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="details-icon-btn explorer-btn"
-                                  title="Open in Solana Explorer"
-                                >
-                                  <img src={viewIcon} alt="View" className="btn-icon-tiny" />
-                                </a>
                               </div>
                             </div>
 
@@ -766,9 +863,23 @@ const Portfolio = () => {
 
                             <div className="details-info-row-v2">
                               <span className="details-label">LP Token Account</span>
-                              <span className="details-val-mono" title={pos.lpTokenAccount.toBase58()}>
+                              <div className="details-value-with-actions">
+                                <span className="details-val-mono" title={pos.lpTokenAccount.toBase58()}>
                                 {pos.lpTokenAccount.toBase58().slice(0, 6)}...{pos.lpTokenAccount.toBase58().slice(-6)}
-                              </span>
+                                </span>
+                                <button
+                                  type="button"
+                                  className="details-icon-btn copy-btn"
+                                  onClick={() => void copyToClipboard(pos.lpTokenAccount.toBase58())}
+                                  title={`Copy ${pos.lpTokenAccount} Address`}
+                                > 
+                                  {copiedPoolPda === pos.lpTokenAccount.toBase58() ? (
+                                    <span className="copy-status-inline">Copied!</span>
+                                  ) : (
+                                    <img src={copyIcon} alt="Copy" className="btn-icon-tiny" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
 
                             <div className="details-info-row-v2">

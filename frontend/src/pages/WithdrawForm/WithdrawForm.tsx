@@ -18,10 +18,7 @@ import { RoundDirection } from '../../utils/curve/calculator'
 import { computeTransferFeeForPre } from '../../utils/curve/fee'
 import { logActivity } from '../../utils/activity'
 import useTokenProgramAta from '../../hooks/useTokenProgramAta'
-import { useDispatch } from 'react-redux'
-import { refreshAfterPoolTx } from '../../store/solanaApi'
-import { invalidatePortfolioCache } from '../Portfolio/Portfolio'
-import { useGetPoolStateQuery } from '../../store/solanaApi'
+import { invalidatePortfolioCache, triggerPortfolioRefetch } from '../Portfolio/Portfolio'
 import './WithdrawForm.css'
 
 export type WithdrawState = {
@@ -96,16 +93,10 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
     const { connection } = useConnection()
     const wallet = useWallet()
     const { detectTokenProgram, deriveAta, buildEnsureAtaInstruction } = useTokenProgramAta()
-    const dispatch = useDispatch()
 
     const poolName = state.name || `${state.token0Symbol || 'TOKEN0'}/${state.token1Symbol || 'TOKEN1'}`
     const token0Symbol = state.token0Symbol || 'TOKEN0'
     const token1Symbol = state.token1Symbol || 'TOKEN1'
-
-    const { data: poolStateData, isLoading: fetchingState } = useGetPoolStateQuery(state.poolPda ?? '', {
-        skip: !state.poolPda
-    })
-    const poolStateAcct = poolStateData?.state
 
     const outputToken0 = useMemo(() => {
         if (!quote) return 0
@@ -128,7 +119,11 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
             return
         }
         if (!quote) {
-            setTxState({ status: 'error', title: 'Quote unavailable', message: 'Quote unavailable' })
+            setTxState({ status: 'error', title: 'Quote unavailable', message: 'Quote unavailable. Please wait for calculation to complete.' })
+            return
+        }
+        if (!quote.receive0 || !quote.receive1) {
+            setTxState({ status: 'error', title: 'Invalid amounts', message: 'Withdrawal amounts not calculated. Please try again.' })
             return
         }
         const poolPda = toPublicKey(state.poolPda)
@@ -142,7 +137,8 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
 
         try {
             const programId = (program as any).programId as PublicKey
-            if (!poolStateAcct) throw new Error('Pool state not loaded')
+            // Fetch pool state directly using Anchor (avoids RTK Query decoding issues)
+            const poolStateAcct: any = await (program.account as any).poolState.fetch(poolPda)
             const token0Mint = new PublicKey(poolStateAcct.token0Mint)
             const token1Mint = new PublicKey(poolStateAcct.token1Mint)
 
@@ -178,6 +174,8 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
             const [authority] = await getAuthAddress(programId)
 
             setTxState({ status: 'info', title: 'Sending', message: 'Sending withdraw transaction...' })
+            
+            // Pass gross amounts (before transfer fees) as minimum — matches original working code
             const tx = await program.methods
                 .withdraw(new anchor.BN(quote.lpInput.toString()), new anchor.BN(quote.receive0.toString()), new anchor.BN(quote.receive1.toString()))
                 .preInstructions(preIxs)
@@ -215,10 +213,9 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 signature: tx,
                 status: 'success',
             })
-            // Surgically refresh only this pool's vault balances + portfolio cache
-            void refreshAfterPoolTx(dispatch, state.poolPda || '')
-            // Also invalidate the module-level portfolio cache
+            // Invalidate portfolio cache and trigger refetch on portfolio page
             invalidatePortfolioCache(wallet.publicKey?.toBase58())
+            triggerPortfolioRefetch(wallet.publicKey?.toBase58())
         } catch (err: any) {
             const message = err?.message || String(err)
             setTxState({
@@ -244,12 +241,13 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
         const loadQuote = async () => {
             if (!program || !wallet.publicKey) return
             const poolPda = toPublicKey(state.poolPda)
-            if (!poolPda || !poolStateAcct) return
+            if (!poolPda) return
 
             setQuoteLoading(true)
 
             try {
                 const programId = (program as any).programId as PublicKey
+                const poolStateAcct: any = await (program.account as any).poolState.fetch(poolPda)
                 const token0Mint = new PublicKey(poolStateAcct.token0Mint)
                 const token1Mint = new PublicKey(poolStateAcct.token1Mint)
 
@@ -290,9 +288,10 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const ownerLpAcct = await getAccount(connection, ownerLpToken, 'confirmed', lpTokenProgram)
                 const ownerLpBalance = new BN(ownerLpAcct.amount.toString())
 
-                const effectivePercent = percent >= 100 ? 99.5 : percent
-                const percentBps = Math.round(effectivePercent * 100)
-                const lpInput = ownerLpBalance.mul(new BN(percentBps)).add(new BN(9999)).div(new BN(10000))
+                // Use full balance for 100%, otherwise round up to prevent dust
+                const lpInput = percent >= 100 ?
+                    ownerLpBalance :
+                    ownerLpBalance.mul(new BN(Math.round(percent * 100))).add(new BN(9999)).div(new BN(10000))
 
                 if (lpInput.isZero()) {
                     if (!cancelled) {
@@ -320,6 +319,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                 const token0Amount = results.tokenAmount0
                 const token1Amount = results.tokenAmount1
 
+                // Subtract transfer fees to match on-chain calculation
                 const fee0 = await computeTransferFeeForPre(connection, token0Mint, token0Amount)
                 const fee1 = await computeTransferFeeForPre(connection, token1Mint, token1Amount)
 
@@ -352,15 +352,13 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
 
         loadQuote()
         return () => { cancelled = true }
-    }, [program, wallet.publicKey, connection, state.poolPda, percent, token0Symbol, token1Symbol, poolStateAcct])
+    }, [program, wallet.publicKey, connection, state.poolPda, percent, token0Symbol, token1Symbol])
 
     return (
         <div className={embedded ? 'withdraw-page withdraw-page--embedded' : 'withdraw-page'}>
             <div className="withdraw-card">
                 <div className="withdraw-header">
-                    <button className="withdraw-close" onClick={onClose} aria-label="Close withdraw form">
-                        x
-                    </button>
+                    <button className="withdraw-close" onClick={onClose} aria-label="Close withdraw form">x</button>
                     <h2>Remove Liquidity</h2>
                     <p>{poolName}</p>
                 </div>
@@ -408,7 +406,6 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                         <button type="button" onClick={() => onQuickPercent(75)}>75%</button>
                         <button type="button" onClick={() => onQuickPercent(100)}>100%</button>
                     </div>
-
                 </div>
 
                 <div className="withdraw-summary">
@@ -427,12 +424,10 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                         signature={txState.signature}
                         explorerUrl={getExplorerUrl(txState.signature)}
                         details={txState.details}
-                        // Don't provide onClose while the tx is in-flight so the
-                        // card cannot auto-dismiss before the transaction settles.
                         onClose={txState.status !== 'info' ? () => setTxState(null) : undefined}
                     />
                 )}
-                <button className="withdraw-confirm" onClick={onConfirmWithdraw} disabled={busy || quoteLoading || fetchingState || !poolStateAcct}>Confirm</button>
+                <button className="withdraw-confirm" onClick={onConfirmWithdraw} disabled={busy || quoteLoading}>Confirm</button>
             </div>
         </div>
     )

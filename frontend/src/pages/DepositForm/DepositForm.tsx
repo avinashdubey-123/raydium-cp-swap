@@ -23,7 +23,7 @@ import idlJson from '../../../idl/raydium_cp_swap.json'
 import { logActivity } from '../../utils/activity'
 import { useDispatch } from 'react-redux'
 import { refreshAfterPoolTx } from '../../store/solanaApi'
-import { invalidatePortfolioCache } from '../Portfolio/Portfolio'
+import { invalidatePortfolioCache, triggerPortfolioRefetch } from '../Portfolio/Portfolio'
 
 type Pool = {
   name?: string
@@ -701,8 +701,9 @@ export default function DepositForm() {
         })
         // Surgically refresh only this pool's vault balances + portfolio cache
         await refreshAfterPoolTx(dispatch, poolAddr.toBase58())
-        // Also invalidate the module-level portfolio cache
+        // Also invalidate the module-level portfolio cache and trigger refetch
         invalidatePortfolioCache(wallet.publicKey?.toBase58())
+        triggerPortfolioRefetch(wallet.publicKey?.toBase58())
         await refetchPoolStateAfterTx(tx)
         setStatus(null)
         setBusy(false)
