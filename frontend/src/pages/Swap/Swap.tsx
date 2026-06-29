@@ -1379,7 +1379,6 @@ export default function Swap() {
                             const name1 = getShortTokenName(pool.token1)
                             const poolName = `${name0}-${name1}`
                             const feeTier = getFeeTier(pool)
-                            const price = pool.price ?? '-'
                             return (
                               <button
                                 key={pool.poolPda}
@@ -1394,7 +1393,7 @@ export default function Swap() {
                                 <div className="swap-pool-item__info">
                                   <div className="swap-pool-item__name">{poolName}</div>
                                   <div className="swap-pool-item__meta">
-                                    {feeTier} • {price} {name0}/{name1}
+                                    {feeTier} Fee Rate
                                   </div>
                                 </div>
                               </button>
