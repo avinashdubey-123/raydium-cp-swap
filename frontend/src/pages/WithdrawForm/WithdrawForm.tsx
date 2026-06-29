@@ -74,7 +74,14 @@ const toPublicKey = (value?: string | PublicKey | null) => {
 }
 
 function WithdrawFormContent({ state, onClose, embedded = false }: { state: WithdrawState; onClose: () => void; embedded?: boolean }) {
+    const location = useLocation()
     const [percent, setPercent] = useState(100)
+
+    useEffect(() => {
+        if (location.pathname !== '/liquidity/withdraw') {
+            setPercent(100)
+        }
+    }, [location.pathname])
     const [quote, setQuote] = useState<WithdrawQuote | null>(null)
     const [quoteLoading, setQuoteLoading] = useState(false)
     const [busy, setBusy] = useState(false)
@@ -424,7 +431,7 @@ function WithdrawFormContent({ state, onClose, embedded = false }: { state: With
                         signature={txState.signature}
                         explorerUrl={getExplorerUrl(txState.signature)}
                         details={txState.details}
-                        onClose={txState.status !== 'info' ? () => setTxState(null) : undefined}
+                        onClose={() => setTxState(null)}
                     />
                 )}
                 <button className="withdraw-confirm" onClick={onConfirmWithdraw} disabled={busy || quoteLoading}>Confirm</button>

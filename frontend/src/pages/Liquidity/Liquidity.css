@@ -191,10 +191,22 @@
 
 .lp-table-wrap {
   background: #0f1929;
-  border: 1px solid #1e2d45;
+  border: 1px solid #1f2d48;
   border-radius: 16px;
-  overflow: visible;
+  overflow: hidden;
+  animation: tableFadeIn 0.4s ease-out;
   margin-bottom: 20px;
+}
+
+@keyframes tableFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .lp-table {
@@ -640,4 +652,14 @@
 @keyframes inline-loader2 {
   0% { transform: translate(0, 0); }
   100% { transform: translate(12px, 0); }
+}
+@keyframes tableFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

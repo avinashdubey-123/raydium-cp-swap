@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import Header from './components/Header/Header'
+import { useWallet } from '@solana/wallet-adapter-react'
+import { clearActivities } from './utils/activity'
 import { useLocation } from 'react-router-dom'
 import Liquidity from './pages/Liquidity/Liquidity'
 import InitializeLiquidity from './pages/InitializeForm/InitializeForm'
@@ -83,6 +85,13 @@ function PersistentPages({ activePath }: { activePath: string }) {
 function App() {
   const location = useLocation()
   const path = location.pathname
+  const { connected } = useWallet()
+
+  useEffect(() => {
+    if (!connected) {
+      clearActivities()
+    }
+  }, [connected])
 
   return (
     <>

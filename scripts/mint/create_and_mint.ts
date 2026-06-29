@@ -8,6 +8,7 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   createMintToInstruction,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import fs from "fs";
@@ -22,6 +23,7 @@ type MintTrackerEntry = {
   amountTokens: string;
   amountBaseUnits: string;
   txSignature: string;
+  tokenProgram?: string;
 };
 
 type MintTrackerFile = {
@@ -68,11 +70,12 @@ function appendTrackerEntry(entry: MintTrackerEntry) {
 async function main() {
   // Hardcoded configuration (edit these values directly)
   const rpc = "https://api.devnet.solana.com"; // RPC endpoint
-  const payerPath = "/home/avinash_dubey/.config/solana/anchor-base.json"; // path to payer keypair JSON (no trailing space)
+  const payerPath = "/Users/lovepreet/.config/solana/anchor-base.json"; // path to payer keypair JSON (no trailing space)
   const decimals = 9; // mint decimals
-  const mintArg: string = "DEzz2hBGDDPRC58WRpswFjYVH2M5BbhR9q6xVeTK2qKv"; // "new" or existing mint pubkey string
+  const mintArg: string = "7Ru62uNfTEqx748XweWjLgjeJrT7KWjCsiocnK7Qqx9"; // "new" or existing mint pubkey string
+  const tokenProgramArg: string = "2022"; // "classic" or "2022" (used when creating a new mint)
   // Single recipient: format "ADDRESS" or "ADDRESS:AMOUNT" (amount in token units)
-  const recipientArg: string = "Ex5VGgP12mqD4Ut34fHgc1zXB5jxMDLoSQbN7LcXPBsz:5000"; // <<< REPLACE before running
+  const recipientArg: string = "wE2EtwuovRxvXZoThsXhRTuCrFdAA1jTbLnJp9nfezL:50000"; // <<< REPLACE before running
 
   if (recipientArg.includes("REPLACE_WITH_RECIPIENT_PUBKEY")) {
     console.error("Please edit scripts/mint/create_and_mint.ts and set `recipientArg` to a real recipient pubkey before running.");
@@ -88,9 +91,12 @@ async function main() {
   const conn = new Connection(rpc, "confirmed");
 
   let mintPubkey: PublicKey;
+  let tokenProgram = tokenProgramArg === "2022" ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+
   if (mintArg === "new") {
-    console.log("Creating new mint...");
-    mintPubkey = await createMint(conn, payer, payer.publicKey, null, decimals);
+    console.log(`Creating new mint (program: ${tokenProgramArg})...`);
+    const mintKeypair = Keypair.generate();
+    mintPubkey = await createMint(conn, payer, payer.publicKey, null, decimals, mintKeypair, undefined, tokenProgram);
     console.log("Created mint:", mintPubkey.toBase58());
   } else {
     try {
@@ -122,11 +128,14 @@ async function main() {
   }
   const amountNumber = Number(amountBase);
 
-  const mintInfo = await conn.getAccountInfo(mintPubkey)
-
-  const tokenProgram = mintInfo?.owner.equals(TOKEN_PROGRAM_ID)
-    ? TOKEN_PROGRAM_ID
-    : (await import("@solana/spl-token")).TOKEN_2022_PROGRAM_ID
+  if (mintArg !== "new") {
+    const mintInfo = await conn.getAccountInfo(mintPubkey);
+    if (!mintInfo) {
+      console.error("Mint account not found on-chain. Please verify the pubkey and RPC.");
+      process.exit(1);
+    }
+    tokenProgram = mintInfo.owner;
+  }
 
   console.log(`Ensuring ATA and minting to ${recipientPubkey.toBase58()}`);
   const ataAddress = getAssociatedTokenAddressSync(
@@ -160,7 +169,16 @@ async function main() {
   tx.recentBlockhash = blockhash;
 
   const signed = await (await import("@solana/web3.js")).sendAndConfirmTransaction(conn, tx, [payer]);
+  
+  let cluster = "";
+  if (rpc.includes("devnet")) {
+    cluster = "?cluster=devnet";
+  } else if (rpc.includes("testnet")) {
+    cluster = "?cluster=testnet";
+  }
+  
   console.log(`Mint tx: ${signed}`);
+  console.log(`Explorer: https://explorer.solana.com/tx/${signed}${cluster}`);
 
   appendTrackerEntry({
     timestamp: new Date().toISOString(),
@@ -171,6 +189,7 @@ async function main() {
     amountTokens: recipientAmountTokens.toString(),
     amountBaseUnits: amountBase.toString(),
     txSignature: signed,
+    tokenProgram: tokenProgram.toBase58(),
   });
 
   console.log("Done.");

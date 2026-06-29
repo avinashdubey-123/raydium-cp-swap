@@ -425,7 +425,6 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  margin: -10px 0 14px;
   position: relative;
   z-index: 2;
 }
@@ -864,7 +863,6 @@
   border: 1px solid #1f2d44;
   border-radius: 16px;
   padding: 16px;
-  margin-bottom: 12px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   position: relative;
 }
@@ -1010,12 +1008,6 @@
 
 .swap-input-field-borderless::placeholder {
   color: #4a5568;
-}
-
-.swap-input-fiat-value {
-  font-size: 12px;
-  color: #718096;
-  margin-top: 4px;
 }
 
 /* Full Width Swap Action Button */

@@ -23,7 +23,7 @@ import idlJson from '../../../idl/raydium_cp_swap.json'
 import { logActivity } from '../../utils/activity'
 import { useDispatch } from 'react-redux'
 import { refreshAfterPoolTx } from '../../store/solanaApi'
-import { invalidatePortfolioCache, triggerPortfolioRefetch } from '../Portfolio/Portfolio'
+import { triggerPortfolioRefetch } from '../Portfolio/Portfolio'
 
 type Pool = {
   name?: string
@@ -121,7 +121,15 @@ export default function DepositForm() {
   const [amountA, setAmountA] = useState('')
   const [amountB, setAmountB] = useState('')
   const [lastEditedField, setLastEditedField] = useState<'token0' | 'token1'>('token0')
+
+  useEffect(() => {
+    if (location.pathname !== '/liquidity/deposit') {
+      setAmountA('')
+      setAmountB('')
+    }
+  }, [location.pathname])
   const [userBalances, setUserBalances] = useState<{ token0: string; token1: string } | null>(null)
+  const [balanceRefetchTrigger, setBalanceRefetchTrigger] = useState(0)
   const [quote, setQuote] = useState<null | {
     impliedLp: string,
     token0PostHuman: string
@@ -316,7 +324,7 @@ export default function DepositForm() {
     return () => {
       mounted = false
     }
-  }, [wallet.publicKey, token0MintParam, token1MintParam, connection, decimals0, decimals1])
+  }, [wallet.publicKey, token0MintParam, token1MintParam, connection, decimals0, decimals1, balanceRefetchTrigger])
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [errorDetails, setErrorDetails] = useState<string | null>(null)
@@ -701,9 +709,11 @@ export default function DepositForm() {
         })
         // Surgically refresh only this pool's vault balances + portfolio cache
         await refreshAfterPoolTx(dispatch, poolAddr.toBase58())
-        // Also invalidate the module-level portfolio cache and trigger refetch
-        invalidatePortfolioCache(wallet.publicKey?.toBase58())
-        triggerPortfolioRefetch(wallet.publicKey?.toBase58())
+        if (wallet.publicKey) {
+          // Also invalidate the module-level portfolio cache and trigger refetch
+          triggerPortfolioRefetch(wallet.publicKey?.toBase58())
+          setBalanceRefetchTrigger(t => t + 1)
+        }
         await refetchPoolStateAfterTx(tx)
         setStatus(null)
         setBusy(false)
@@ -818,10 +828,10 @@ export default function DepositForm() {
                   message={status}
                   details={errorDetails}
                   // No onClose while status is 'info' — card stays until tx settles
-                  onClose={errorDetails ? () => {
+                  onClose={() => {
                     setStatus(null)
                     setErrorDetails(null)
-                  } : undefined}
+                  }}
                 />
               )}
 

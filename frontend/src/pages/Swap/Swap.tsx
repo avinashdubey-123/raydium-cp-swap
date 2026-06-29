@@ -225,6 +225,14 @@ export default function Swap() {
   const [amountIn, setAmountIn] = useState('')
   const [amountOut, setAmountOut] = useState('')
   const [lastEditedField, setLastEditedField] = useState<'input' | 'output'>('input')
+
+  useEffect(() => {
+    if (location.pathname !== '/swap') {
+      setAmountIn('')
+      setAmountOut('')
+      setLastEditedField('input')
+    }
+  }, [location.pathname])
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [errorDetails, setErrorDetails] = useState<string | null>(null)
@@ -482,6 +490,7 @@ export default function Swap() {
   }
 
   const [showWalletConnectedToast, setShowWalletConnectedToast] = useState(false)
+  const [balanceRefetchTrigger, setBalanceRefetchTrigger] = useState(0)
   const previousConnectedRef = useRef<boolean | null>(null)
 
   useEffect(() => {
@@ -598,7 +607,7 @@ export default function Swap() {
     return () => {
       mounted = false
     }
-  }, [wallet.publicKey, activePool, connection])
+  }, [wallet.publicKey, activePool, connection, balanceRefetchTrigger])
 
   const toggleSwapDirection = () => {
     setSwapDirection((current) => (current === 'token0-to-token1' ? 'token1-to-token0' : 'token0-to-token1'))
@@ -1055,6 +1064,7 @@ export default function Swap() {
           // Surgically refresh only this pool's vault balances in the cache
           void refreshPoolCache(dispatch, ctx.poolAddr.toBase58())
           await loadPrices()
+          setBalanceRefetchTrigger(t => t + 1)
           setStatus(null)
           setBusy(false)
           return
@@ -1116,6 +1126,7 @@ export default function Swap() {
           // Surgically refresh only this pool's vault balances in the cache
           void refreshPoolCache(dispatch, ctx.poolAddr.toBase58())
           await loadPrices()
+          setBalanceRefetchTrigger(t => t + 1)
           setStatus(null)
           setBusy(false)
         } catch (err: any) {
@@ -1275,10 +1286,10 @@ export default function Swap() {
                   message={status}
                   details={errorDetails}
                   // No onClose while status is 'info' — card stays until tx settles
-                  onClose={errorDetails ? () => {
+                  onClose={() => {
                     setStatus(null)
                     setErrorDetails(null)
-                  } : undefined}
+                  }}
                 />
               )}
 
@@ -1529,7 +1540,6 @@ export default function Swap() {
                               onChange={(e) => updateInputAmount(e.target.value)}
                               placeholder="0"
                             />
-                            <span className="swap-input-fiat-value">~$0</span>
                           </div>
                         </div>
                       </div>

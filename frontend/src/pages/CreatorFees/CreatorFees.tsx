@@ -26,6 +26,8 @@ type PoolCandidate = {
   creatorFeeOn: number
   creatorFees0: bigint
   creatorFees1: bigint
+  token0Symbol?: string
+  token1Symbol?: string
 }
 
 const toPublicKey = (value: unknown): PublicKey | null => {
@@ -68,6 +70,15 @@ const formatTokens = (amount: bigint, decimals: number) => {
   return fraction.length ? `${whole}.${fraction}` : whole
 }
 
+const getTokenColor = (symbol: string): string => {
+  let hash = 0
+  for (let i = 0; i < symbol.length; i++) {
+    hash = symbol.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue}, 65%, 40%)`
+}
+
 const CreatorFees = () => {
   const program = useProgram()
   const navigate = useNavigate()
@@ -82,6 +93,14 @@ const CreatorFees = () => {
   const [status, setStatus] = useState<string | null>(null)
   const [errorDetails, setErrorDetails] = useState<string | null>(null)
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+
+  const toggleRow = (rowKey: string) => {
+    setExpandedRows((current) => ({
+      ...current,
+      [rowKey]: !current[rowKey],
+    }))
+  }
 
   const loadPools = async () => {
     if (!program || !wallet.publicKey) {
@@ -132,6 +151,8 @@ const CreatorFees = () => {
         creatorFeeOn: Number(getField(account, 'creatorFeeOn', 'creator_fee_on') ?? 0),
         creatorFees0: toBigIntSafe(getField(account, 'creatorFeesToken0', 'creator_fees_token_0')),
         creatorFees1: toBigIntSafe(getField(account, 'creatorFeesToken1', 'creator_fees_token_1')),
+        token0Symbol: getField(account, 'token0Symbol', 'token_0_symbol'),
+        token1Symbol: getField(account, 'token1Symbol', 'token_1_symbol'),
       })
     }
 
@@ -270,39 +291,46 @@ const CreatorFees = () => {
   }
 
   if (!wallet.connected) {
-    return <div className="creator-fees-page"><div className="creator-fees-empty">Connect your wallet to view creator fee pools.</div></div>
+    return (
+      <div className="cf-wrapper">
+        <div className="cf-empty-card">Please connect your wallet to view creator fee pools.</div>
+      </div>
+    )
   }
 
   return (
-    <div className="creator-fees-page">
-      <div className="creator-fees-hero">
-        <div>
-          <div className="creator-fees-kicker">Portfolio</div>
-          <h1>Collect creator fees</h1>
-          <p>Pools you created with creator fees enabled are listed here, along with their pending fee balances.</p>
+    <div className="cf-wrapper">
+      <div className="cf-header-section">
+        <h1 className="cf-title">Collect creator fees</h1>
+        <p className="cf-subtitle">Pools you created with creator fees enabled are listed here, along with their pending fee balances.</p>
+      </div>
+
+      <div className="cf-navigation-panel">
+        <div className="cf-tab-buttons">
+          <button className="cf-tab-btn active">Creator Pools</button>
         </div>
-        <div className="creator-fees-hero-actions">
-          <button type="button" className="creator-fees-secondary" onClick={() => navigate('/portfolio')}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button type="button" className="cf-btn-secondary" onClick={() => navigate('/portfolio')}>
             Back to portfolio
           </button>
-          <button type="button" className="creator-fees-primary" onClick={() => void refresh()} disabled={refreshing}>
+          <button type="button" className="cf-btn-primary" onClick={() => void refresh()} disabled={refreshing}>
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
       </div>
 
-      <div className="creator-fees-stats">
-        <div className="creator-fees-stat">
-          <span>Eligible pools</span>
-          <strong>{pools.length}</strong>
+      <div className="cf-stats-row">
+        <div className="cf-stat-card">
+          <span className="cf-stat-label">Eligible pools</span>
+          <strong className="cf-stat-value">{pools.length}</strong>
         </div>
-        <div className="creator-fees-stat">
-          <span>Ready to collect</span>
-          <strong>{readyToCollect}</strong>
+        <div className="cf-stat-card">
+          <span className="cf-stat-label">Ready to collect</span>
+          <strong className="cf-stat-value">{readyToCollect}</strong>
         </div>
-        <div className="creator-fees-stat">
-          <span>Pending fee pairs</span>
-          <strong>{pools.length}</strong>
+        <div className="cf-stat-card">
+          <span className="cf-stat-label">Pending fee pairs</span>
+          <strong className="cf-stat-value">{pools.length}</strong>
         </div>
       </div>
 
@@ -323,55 +351,97 @@ const CreatorFees = () => {
           title={errorDetails ? 'Collection Failed' : 'Status'}
           message={status}
           details={errorDetails}
-          // No onClose while status is 'info' — card stays until tx settles
-          onClose={errorDetails ? () => {
+          onClose={() => {
             setStatus(null)
             setErrorDetails(null)
-          } : undefined}
+          }}
         />
       )}
 
-      <div className="creator-fees-panel">
-        <div className="creator-fees-panel-head">
-          <h2>Creator fee pools</h2>
-          <span>{loading ? 'Loading...' : `${pools.length} pools`}</span>
-        </div>
-
+      <div className="cf-list-container">
         {loading ? (
-          <div className="creator-fees-empty">Loading creator fee pools...</div>
+          <div className="cf-empty-card">Loading creator fee pools...</div>
         ) : pools.length === 0 ? (
-          <div className="creator-fees-empty">No creator-fee pools found for this wallet.</div>
+          <div className="cf-empty-card">No creator-fee pools found for this wallet.</div>
         ) : (
-          <div className="creator-fees-list">
+          <div className="cf-cards-list">
             {pools.map((pool) => {
               const total = pool.creatorFees0 + pool.creatorFees1
               const hasFees = total > 0n
+              const sym0 = (pool.token0Symbol || pool.token0Mint.toBase58().slice(0, 4)).toUpperCase()
+              const sym1 = (pool.token1Symbol || pool.token1Mint.toBase58().slice(0, 4)).toUpperCase()
+              const avatar0 = sym0.slice(0, 2).toUpperCase()
+              const avatar1 = sym1.slice(0, 2).toUpperCase()
+              const poolKey = pool.poolPda.toBase58()
+              const isExpanded = !!expandedRows[poolKey]
+
               return (
-                <div className="creator-fees-row" key={pool.poolPda.toBase58()}>
-                  <div className="creator-fees-row-main">
-                    <div className="creator-fees-pair">
-                      {pool.token0Mint.toBase58().slice(0, 4)}... / {pool.token1Mint.toBase58().slice(0, 4)}...
+                <div className={`cf-card ${isExpanded ? 'expanded' : ''}`} key={poolKey}>
+                  <div className="cf-card-header">
+                    <div className="cf-card-pair-row">
+                      <div className="cf-avatar-group">
+                        <span className="cf-avatar-badge b0" style={{ backgroundColor: getTokenColor(sym0), color: '#ffffff', borderColor: 'transparent' }}>{avatar0}</span>
+                        <span className="cf-avatar-badge b1" style={{ backgroundColor: getTokenColor(sym1), color: '#ffffff', borderColor: 'transparent' }}>{avatar1}</span>
+                      </div>
+                      <span className="cf-pair-title">
+                        {sym0} / {sym1}
+                      </span>
                     </div>
-                    <div className="creator-fees-meta">
-                      <span>Pool {pool.poolPda.toBase58().slice(0, 8)}...</span>
-                      <span>Creator fee mode {pool.creatorFeeOn}</span>
+
+                    <div className="cf-card-composition">
+                      <div className="cf-comp-item">
+                        <span className="cf-comp-amount">{formatTokens(pool.creatorFees0, pool.decimals0)}</span>
+                        <span className="cf-comp-symbol">{sym0}</span>
+                      </div>
+                      <div className="cf-comp-item">
+                        <span className="cf-comp-amount">{formatTokens(pool.creatorFees1, pool.decimals1)}</span>
+                        <span className="cf-comp-symbol">{sym1}</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="creator-fees-amounts">
-                    <span>{formatTokens(pool.creatorFees0, pool.decimals0)} token0</span>
-                    <span>{formatTokens(pool.creatorFees1, pool.decimals1)} token1</span>
-                  </div>
-                  <div className="creator-fees-actions">
-                    <span className={`creator-fees-pill ${hasFees ? 'live' : ''}`}>{hasFees ? 'Ready to collect' : 'No pending fees'}</span>
+
+                  <div className="cf-card-actions" style={{ justifyContent: 'space-between' }}>
+                    <div className="cf-card-buttons">
+                      <button
+                        type="button"
+                        className="cf-btn-primary"
+                        disabled={collecting === poolKey || !hasFees}
+                        onClick={() => void collectFees(pool)}
+                      >
+                        {collecting === poolKey ? 'Collecting...' : 'Collect'}
+                      </button>
+                      <span className={`cf-status-pill ${hasFees ? 'success' : 'empty'}`}>
+                        {hasFees ? 'Ready to collect' : 'No pending fees'}
+                      </span>
+                    </div>
+
                     <button
                       type="button"
-                      className="creator-fees-primary"
-                      disabled={collecting === pool.poolPda.toBase58() || !hasFees}
-                      onClick={() => void collectFees(pool)}
+                      className={`cf-view-details-btn ${isExpanded ? 'active' : ''}`}
+                      onClick={() => toggleRow(poolKey)}
                     >
-                      {collecting === pool.poolPda.toBase58() ? 'Collecting...' : 'Collect'}
+                      {isExpanded ? 'Hide Details ▲' : 'View Details ▼'}
                     </button>
                   </div>
+
+                  {isExpanded && (
+                    <div className="cf-details-panel">
+                      <div className="cf-details-grid">
+                        <div className="cf-details-row">
+                          <span className="cf-details-label">Pool Address</span>
+                          <span className="cf-details-val-mono">{poolKey}</span>
+                        </div>
+                        <div className="cf-details-row">
+                          <span className="cf-details-label">AMM Config</span>
+                          <span className="cf-details-val-mono">{pool.ammConfig.toBase58()}</span>
+                        </div>
+                        <div className="cf-details-row">
+                          <span className="cf-details-label">Creator Fee Mode</span>
+                          <span className="cf-details-val-mono">{pool.creatorFeeOn}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}

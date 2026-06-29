@@ -11,3 +11,4 @@ Makefile
 docs
 .agents
 .env
+scripts/mint_ata_tracker.json

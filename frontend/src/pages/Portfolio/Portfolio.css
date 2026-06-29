@@ -783,3 +783,26 @@
     min-width: unset;
   }
 }
+.asset-row-token-symbol,
+.comp-symbol,
+.pair-title-v2,
+.details-label {
+  text-transform: uppercase;
+}
+
+@keyframes tableFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.assets-horizontal-rows,
+.positions-list-container,
+.portfolio-activity-list {
+  animation: tableFadeIn 0.4s ease-out;
+}

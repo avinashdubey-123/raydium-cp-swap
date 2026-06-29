@@ -35,3 +35,7 @@ export const getActivities = (): ActivityItem[] => {
     return []
   }
 }
+
+export const clearActivities = () => {
+  sessionStorage.removeItem(STORAGE_KEY)
+}

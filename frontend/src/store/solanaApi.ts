@@ -172,7 +172,7 @@ async function getPoolStateAndVaults(
   ])
 
   return {
-    state: decodedPool,
+    state: toSerializableValue(decodedPool),
     vault0Balance,
     vault1Balance,
   }
@@ -355,7 +355,7 @@ export const solanaApi = createApi({
           if (vault0Key) vault0Balance = await getTokenBalance(connection, toPubString(vault0Key))
           if (vault1Key) vault1Balance = await getTokenBalance(connection, toPubString(vault1Key))
 
-          return { data: { state: decodedPool, vault0Balance, vault1Balance } }
+          return { data: { state: toSerializableValue(decodedPool), vault0Balance, vault1Balance } }
         } catch (error) {
           return {
             error: {

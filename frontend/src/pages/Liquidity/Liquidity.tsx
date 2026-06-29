@@ -301,7 +301,7 @@ const Liquidity = () => {
     return pools.filter(p => {
       if (!p.poolPda) return false
       const vaultData = vaultBalancesMap[p.poolPda]
-      return vaultData && vaultData.vault0Balance !== null && vaultData.vault1Balance !== null
+      return vaultData && vaultData.vault0Balance !== null && vaultData.vault1Balance !== null && Number(p.lpSupply) > 100
     })
   }, [pools, vaultBalancesMap])
 
@@ -309,9 +309,22 @@ const Liquidity = () => {
   const filteredPools = visiblePools.filter((p) => {
     if (!searchQuery) return true
     const q = searchQuery.trim().toLowerCase()
-    const displayName = getPoolDisplayName(p.token0, p.token1).toLowerCase()
     const pda = p.poolPda ? String(p.poolPda).toLowerCase() : ''
-    return displayName.includes(q) || pda.includes(q)
+    
+    // Check if it's a valid address search
+    const isValidAddress = q.length >= 32 && q.length <= 44;
+    
+    if (isValidAddress) {
+      return pda === q;
+    }
+    
+    // Otherwise it's a token search - show if either token starts with the string
+    const displayName = getPoolDisplayName(p.token0, p.token1).toLowerCase()
+    const parts = displayName.split('-')
+    const token0Match = parts[0] && parts[0].startsWith(q)
+    const token1Match = parts[1] && parts[1].startsWith(q)
+    
+    return displayName.startsWith(q) || token0Match || token1Match
   })
 
   return (
@@ -326,7 +339,7 @@ const Liquidity = () => {
           <div className="lp-stat-card">
             <span className="lp-stat-label">Total Number of Pools</span>
             <span className="lp-stat-value">
-              {loadingPools ? 'Loading...' : `${pools.length} Pools`}
+              {loadingPools || !allLoaded ? 'Loading...' : `${filteredPools.length} Pools`}
             </span>
           </div>
         </div>

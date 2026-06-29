@@ -17,7 +17,7 @@
   color: var(--admin-text);
 
   --configs-grid-cols: 0.4fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr 1fr 1fr 44px;
-  --whitelist-grid-cols: 2fr 2fr 1fr;
+  --whitelist-grid-cols: 1fr 100px;
   --pools-grid-cols: 1.5fr 2fr 1fr 44px;
   --fees-grid-cols: 1.5fr 1.5fr 1.5fr 1.8fr;
 }
@@ -95,6 +95,27 @@
   color: #2a303a;
   background: var(--admin-accent);
   box-shadow: 0 4px 15px rgba(57, 208, 216, 0.3);
+}
+
+.admin-search {
+  background: #131c2e;
+  border: 1px solid #1e2d45;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #c8d4e8;
+  font-size: 13px;
+  outline: none;
+  width: 240px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.admin-search::placeholder {
+  color: #4a5a70;
+}
+
+.admin-search:focus {
+  border-color: #39d0d8;
+  box-shadow: 0 0 10px rgba(57, 208, 216, 0.2);
 }
 
 .admin-section {
@@ -225,6 +246,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  text-align: left;
 }
 
 .admin-grid-row {
@@ -256,7 +278,8 @@
 
 .whitelist-grid {
   grid-template-columns: var(--whitelist-grid-cols);
-  text-align: left
+  text-align: left;
+  max-width: 800px;
 }
 
 

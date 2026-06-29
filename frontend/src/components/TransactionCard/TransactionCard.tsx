@@ -22,7 +22,7 @@ export default function TransactionCard({ status, title, message, explorerUrl, s
   const [isClosing, setIsClosing] = useState(false)
 
   useEffect(() => {
-    if (!onClose) return
+    if (!onClose || status === 'info') return
 
     const startCloseTimer = window.setTimeout(() => {
       setIsClosing(true)

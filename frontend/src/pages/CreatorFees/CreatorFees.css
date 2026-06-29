@@ -1,244 +1,403 @@
-.creator-fees-page {
-  max-width: 1180px;
+/* Creator Fees Page - Portfolio Theme Redesign */
+
+.cf-wrapper {
   margin: 0 auto;
-  padding: 112px 18px 80px;
+  padding: 112px 40px;
   min-height: 100vh;
-  color: #d5e3ff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #eff3f8;
+  max-width: 1180px;
 }
 
-.creator-fees-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 18px;
+/* Header Section */
+.cf-header-section {
+  margin-bottom: 36px;
+  text-align: left;
 }
 
-.creator-fees-kicker {
-  color: #7f94b6;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 11px;
+.cf-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  padding-right: 2px;
+  padding-bottom: 8px;
+  background: linear-gradient(120deg,
+      #39d0d8 0%,
+      #2b6cb0 10%,
+      #d000ffce 30%,
+      #39d0d8 45%,
+      #2b6cb0 60%,
+      #d000ffce 80%,
+      #39d0d8 100%);
+  background-size: 130% auto;
+
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+
+  animation: shine-rtl 10s linear infinite;
 }
 
-.creator-fees-hero h1 {
-  margin: 6px 0 8px;
-  font-size: 30px;
-  color: #8fe0ff;
+@keyframes shine-rtl {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
-.creator-fees-hero p {
+.cf-subtitle {
+  font-size: 14px;
+  color: #94a3b8;
   margin: 0;
-  max-width: 720px;
-  color: #8fa4c5;
-  line-height: 1.55;
 }
 
-.creator-fees-hero-actions {
+/* Navigation tabs bar */
+.cf-navigation-panel {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 12px;
   flex-wrap: wrap;
+  gap: 16px;
 }
 
-.creator-fees-primary,
-.creator-fees-secondary {
-  border: 1px solid transparent;
-  border-radius: 12px;
-  padding: 10px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--btn-transition), border-color var(--btn-transition), color var(--btn-transition), box-shadow var(--btn-transition), transform var(--btn-transition);
-}
-
-.creator-fees-primary {
-  background: linear-gradient(135deg, var(--btn-solid-bg) 0%, #5c8dff 100%);
-  color: var(--btn-solid-text);
-}
-
-.creator-fees-primary:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.creator-fees-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--btn-solid-hover-bg) 0%, #66a0ff 100%);
-}
-
-.creator-fees-primary:active:not(:disabled) {
-  background: linear-gradient(135deg, var(--btn-solid-active-bg) 0%, #4d7ac4 100%);
-}
-
-.creator-fees-secondary {
-  background: var(--btn-outline-bg);
-  color: #c0d6f7;
-  border-color: #22324f;
-}
-
-.creator-fees-secondary:hover:not(:disabled) {
-  background: var(--btn-outline-hover-bg);
-  border-color: var(--btn-outline-hover-border);
-}
-
-.creator-fees-secondary:active:not(:disabled) {
-  background: var(--btn-outline-active-bg);
-  border-color: var(--btn-outline-active-border);
-}
-
-.creator-fees-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.creator-fees-stat,
-.creator-fees-panel {
-  background: #111a2d;
-  border: 1px solid #22314b;
-  border-radius: 18px;
-  box-shadow: 0 18px 40px rgba(2, 6, 14, 0.4);
-}
-
-.creator-fees-stat {
-  padding: 16px 18px;
-  display: grid;
+.cf-tab-buttons {
+  display: flex;
   gap: 8px;
 }
 
-.creator-fees-stat span,
-.creator-fees-panel-head span,
-.creator-fees-meta {
-  color: #8397b7;
-  font-size: 12px;
+.cf-tab-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
-.creator-fees-stat strong {
-  font-size: 20px;
-  color: #f2f7ff;
+.cf-tab-btn.active {
+  color: #39d0d8;
+  background: rgba(56, 189, 248, 0.08);
 }
 
-.creator-fees-banner {
-  margin-bottom: 14px;
-  border-radius: 14px;
-  padding: 12px 14px;
+.cf-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -13px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #39d0d8;
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 8px rgba(54, 210, 238, 0.6);
+}
+
+.cf-btn-secondary {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   font-size: 13px;
-  border: 1px solid transparent;
-  white-space: pre-wrap;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.creator-fees-banner.success {
-  background: rgba(56, 179, 122, 0.12);
-  border-color: rgba(56, 179, 122, 0.35);
-  color: #a7f0cc;
+.cf-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #eff3f8;
 }
 
-.creator-fees-banner.error {
-  background: rgba(231, 77, 77, 0.1);
-  border-color: rgba(231, 77, 77, 0.35);
-  color: #ffb5b5;
+.cf-btn-primary {
+  background: rgba(22, 28, 45, 0.5);
+  color: #39d0d8;
+  border: 1px solid #39d0d8;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.creator-fees-panel {
-  padding: 18px;
+.cf-btn-primary:hover:not(:disabled) {
+  filter: brightness(0.8);
 }
 
-.creator-fees-panel-head {
+.cf-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: #64748b;
+  color: #64748b;
+}
+
+/* Stats */
+.cf-stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.cf-stat-card {
+  background: rgba(22, 28, 45, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.cf-stat-label {
+  color: #64748b;
+  font-size: 13px;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.cf-stat-value {
+  color: #f1f5f9;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* Positions List */
+.cf-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cf-empty-card {
+  background: rgba(30, 41, 59, 0.2);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 40px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.cf-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Sleek Cards */
+.cf-card {
+  background: rgba(22, 28, 45, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 20px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.cf-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(22, 28, 45, 0.65);
+}
+
+.cf-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
-.creator-fees-panel-head h2 {
-  margin: 0;
-  color: #eaf2ff;
-  font-size: 18px;
-}
-
-.creator-fees-list {
-  display: grid;
+.cf-card-pair-row {
+  display: flex;
+  align-items: center;
   gap: 12px;
 }
 
-.creator-fees-row {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr auto;
-  gap: 14px;
+/* Avatar Badges */
+.cf-avatar-group {
+  display: flex;
   align-items: center;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #0d1628;
-  border: 1px solid #22324d;
+  position: relative;
 }
 
-.creator-fees-row-main {
-  display: grid;
+.cf-avatar-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 750;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #0f172a;
+}
+
+.cf-avatar-badge.b0 {
+  z-index: 2;
+}
+
+.cf-avatar-badge.b1 {
+  margin-left: -10px;
+  z-index: 1;
+}
+
+.cf-pair-title {
+  font-size: 17px;
+  font-weight: 750;
+  color: #f8fafc;
+}
+
+.cf-card-composition {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cf-comp-item {
+  display: flex;
+  align-items: baseline;
   gap: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
 }
 
-.creator-fees-pair {
+.cf-comp-amount {
   font-size: 15px;
   font-weight: 700;
-  color: #e8f3ff;
+  color: #e2e8f0;
+  font-family: monospace;
 }
 
-.creator-fees-meta {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+.cf-comp-symbol {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 600;
 }
 
-.creator-fees-amounts {
-  display: grid;
-  gap: 6px;
-  color: #c2d3ee;
-  font-size: 13px;
-}
-
-.creator-fees-actions {
+.cf-card-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding-top: 14px;
+}
+
+.cf-card-buttons {
+  display: flex;
+  gap: 24px;
+}
+
+.cf-status-pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+}
+
+.cf-status-pill.success {
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.cf-status-pill.empty {
+  background: rgba(255, 255, 255, 0.05);
+  color: #64748b;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+  .cf-wrapper {
+    padding-top: 80px;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .cf-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .cf-card-composition {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .cf-card-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+/* Details Panel */
+.cf-view-details-btn {
+  background: transparent;
+  border: none;
+  color: #39d0d8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.cf-view-details-btn:hover {
+  filter: brightness(0.9);
+}
+
+.cf-details-panel {
+  margin-top: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.cf-details-grid {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  justify-content: flex-end;
+}
+
+.cf-details-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
-.creator-fees-pill {
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: #16233c;
-  color: #8ea4c4;
-  font-size: 11px;
-  border: 1px solid #253757;
+.cf-details-label {
+  color: #64748b;
+  font-weight: 500;
 }
 
-.creator-fees-pill.live {
-  background: rgba(58, 208, 255, 0.12);
-  color: #b3ebff;
-  border-color: rgba(58, 208, 255, 0.35);
-}
-
-.creator-fees-empty {
-  padding: 28px 18px;
-  text-align: center;
-  color: #7e92b1;
-}
-
-@media (max-width: 900px) {
-  .creator-fees-hero,
-  .creator-fees-row {
-    grid-template-columns: 1fr;
-    display: grid;
-    align-items: start;
-  }
-
-  .creator-fees-stats {
-    grid-template-columns: 1fr;
-  }
-
-  .creator-fees-actions {
-    justify-content: flex-start;
-  }
+.cf-details-val-mono {
+  font-family: monospace;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 2px 6px;
+  border-radius: 4px;
 }

@@ -73,6 +73,13 @@ export default function InitializeForm() {
   const [mintB, setMintB] = useState('')
   const [baseAmount, setBaseAmount] = useState('')
   const [quoteAmount, setQuoteAmount] = useState('')
+
+  useEffect(() => {
+    if (location.pathname !== '/liquidity/create') {
+      setBaseAmount('')
+      setQuoteAmount('')
+    }
+  }, [location.pathname])
   const [openTime, setOpenTime] = useState('0')
   const [status, setStatus] = useState<string | null>(null)
   const [txResult, setTxResult] = useState<{ sig: string; explorer: string } | null>(null)
@@ -308,7 +315,7 @@ export default function InitializeForm() {
         const sorted = all.map((a: any) => ({
           ...a.account,
           publicKey: a.publicKey,
-        })).sort((a: { index: number }, b: { index: number }) => a.index - b.index)
+        })).sort((a: any, b: any) => a.tradeFeeRate.toNumber() - b.tradeFeeRate.toNumber())
         setConfigs(sorted)
         if (sorted.length > 0 && !ammConfig) {
           setAmmConfig(sorted[0].publicKey.toBase58())
@@ -699,10 +706,10 @@ export default function InitializeForm() {
                       message={status}
                       details={errorDetails}
                       // No onClose while status is 'info' — card stays until tx settles
-                      onClose={errorDetails ? () => {
+                      onClose={() => {
                         setStatus(null)
                         setErrorDetails(null)
-                      } : undefined}
+                      }}
                     />
                   )}
 
@@ -1055,7 +1062,7 @@ export default function InitializeForm() {
             {/* Main Token List */}
             <div className="dex-modal__list-header">
               <span>Token</span>
-              <span>Balance/Address</span>
+              <span>Address</span>
             </div>
 
             <div className="dex-modal__list scrollable">
@@ -1077,7 +1084,6 @@ export default function InitializeForm() {
                       </div>
                     </div>
                     <div className="dex-token-row__right" onClick={e => e.stopPropagation()}>
-                      <span className="dex-token-row__balance">0</span>
                       <div className="dex-token-row__address-block">
                         <span className="dex-token-row__address-text">
                           {token.mint.slice(0, 6)}...{token.mint.slice(-6)}
