@@ -1614,7 +1614,6 @@ export default function Swap() {
                               onChange={(e) => updateOutputAmount(e.target.value)}
                               placeholder="0"
                             />
-                            <span className="swap-input-fiat-value">~$0</span>
                           </div>
                         </div>
                       </div>
